@@ -927,6 +927,38 @@ async def health(req):
     return "OK"
 
 
+@rt("/_dbcheck")
+async def db_check(req):
+    """Diagnostic - checks all three DB connections and lists tables."""
+    import traceback
+    from sqlalchemy import create_engine, text
+
+    def try_connect(label, env_var):
+        try:
+            url = os.getenv(env_var, "")
+            if not url:
+                return f"{label}: NOT SET"
+            if "sslmode" not in url:
+                url += "&sslmode=require" if "?" in url else "?sslmode=require"
+            eng = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
+            with eng.connect() as c:
+                result = c.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name"))
+                tables = [r[0] for r in result]
+            return f"{label}: OK ({len(tables)} tables: {', '.join(tables[:30])})"
+        except Exception as e:
+            tb = traceback.format_exc()
+            return f"{label}: ERROR — {e}"
+
+    lines = [
+        try_connect("QB", "QB_DATABASE_URL"),
+        "",
+        try_connect("SD", "SD_DATABASE_URL"),
+        "",
+        try_connect("GT", "GT_DATABASE_URL"),
+    ]
+    return Pre("\n".join(lines))
+
+
 @rt("/login")
 async def login(req):
     if req.session.get("user"):
@@ -973,11 +1005,6 @@ async def login(req):
         ),
         style="max-width:400px;margin:0 auto;padding:40px 20px;"
     )
-
-
-@rt("/health")
-async def health(req):
-    return "OK"
 
 
 @rt("/logout")

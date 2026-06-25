@@ -934,10 +934,14 @@ async def login_page(req):
     if req.session.get("user"):
         return RedirectResponse("/", status_code=303)
     next_url = req.query_params.get("next", "/")
+    error = req.query_params.get("error")
+    error_msg = Div(P("Invalid email or password.", style="color:var(--bad);font-size:13px;margin-bottom:12px;"),
+                    style="background:#fef2f2;padding:10px 14px;border-radius:8px;border:1px solid #fecaca;") if error else ""
     return Div(
         Div(
             H2("EWS Unified Dashboard", style="margin-bottom:4px;"),
             P("Sign in", style="color:var(--muted);margin:0 0 20px;"),
+            error_msg,
             Form(
                 Input(type="email", name="email", placeholder="you@company.com",
                       required=True, style="width:100%;padding:10px;margin-bottom:10px;border:1px solid var(--line);border-radius:8px;"),

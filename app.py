@@ -26,6 +26,21 @@ from data import gt_data as GT
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-2.35.2.min.js"
 
+# Date range presets
+def resolve_date_range(range_key):
+    end = date.today()
+    if range_key == "ytd":
+        return date(end.year, 1, 1), end
+    if range_key == "30d":
+        return end - timedelta(days=30), end
+    if range_key == "90d":
+        return end - timedelta(days=90), end
+    if range_key == "12m":
+        return end - timedelta(days=365), end
+    return date(2020, 1, 1), end
+
+RANGE_PRESETS = [("all","All"), ("ytd","YTD"), ("30d","30d"), ("90d","90d"), ("12m","12m")]
+
 STYLE = Style("""
 :root {
   --navy: #0a1f33; --navy-2: #0d2840; --page: #eef2f7; --card: #ffffff;
@@ -407,7 +422,7 @@ def render_overview():
     if qb_ds:
         invoices = QB.filter_invoices(qb_ds.invoices, date(2020, 1, 1), date.today())
         bs = QB.balance_sheet_summary(qb_ds.accounts)
-        pnl = QB.pnl_summary(qb_ds.pnl, "accrual", date(2020, 1, 1), date.today())
+        pnl = QB.pnl_summary(qb_ds.pnl, "accrual", start, end)
         revenue = pnl["income"] if not qb_ds.pnl.empty else (float(invoices["Revenue"].sum()) if not invoices.empty else 0.0)
         qb_kpis = [
             kpi_card("Revenue", revenue, "$", "", platform="QB"),
@@ -562,7 +577,7 @@ def gt_safe_connect():
 
 # ── Platform section renderers ─────────────────────────────────────────────
 
-def render_qb_section(section_key, basis="accrual"):
+def render_qb_section(section_key, basis="accrual", range_key="all"):
     """Render a QuickBooks sub-tab."""
     ds = qb_safe_load()
     if not ds:
@@ -570,7 +585,8 @@ def render_qb_section(section_key, basis="accrual"):
 
     from charts import qb_charts as QBC
 
-    invoices = QB.filter_invoices(ds.invoices, date(2020, 1, 1), date.today())
+    start, end = resolve_date_range(range_key)
+    invoices = QB.filter_invoices(ds.invoices, start, end)
 
     # ── Helper: basis toggle ──
     def basis_buttons():
@@ -579,12 +595,22 @@ def render_qb_section(section_key, basis="accrual"):
             active = "active" if basis.lower() == key else ""
             btns.append(
                 Button(label, cls=f"preset {active}",
-                       hx_get=f"/view?platform=qb&section={section_key}&basis={key}",
+                       hx_get=f"/view?platform=qb&section={section_key}&basis={key}&range={range_key}",
                        hx_target="#content", hx_indicator="#loading")
             )
         return Div(Span("Basis:", cls="lbl"), *btns,
                    Span("QuickBooks ProfitAndLoss", cls="note", style="margin-left:10px;"),
                    cls="controls", style="margin-top:0;")
+
+    # ── Helper: range buttons
+    def range_buttons():
+        btns = []
+        for rk, rl in RANGE_PRESETS:
+            active = "active" if range_key == rk else ""
+            btns.append(Button(rl, cls=f"preset {active}",
+                hx_get=f"/view?platform=qb&section={section_key}&basis={basis}&range={rk}",
+                hx_target="#content"))
+        return Div(Span("Range:", cls="lbl"), *btns, cls="controls")
 
     # ── Helper: P&L statement table ──
     def pnl_statement(summary):
@@ -614,7 +640,7 @@ def render_qb_section(section_key, basis="accrual"):
         return Div(Table(Thead(Tr(Th("Line item"), Th("Amount", cls="num"))), Tbody(*body), cls="data"), cls="tbl-wrap")
 
     if section_key == "overview":
-        kpis = QB.compute_kpis(ds, invoices, date(2020, 1, 1), date.today())
+        kpis = QB.compute_kpis(ds, invoices, start, end)
         cards = [
             kpi_card(k.label, k.value, k.unit, k.hint or "")
             for k in [kpis["revenue"], kpis["cash"], kpis["outstanding"], kpis["overdue"],
@@ -622,6 +648,7 @@ def render_qb_section(section_key, basis="accrual"):
         ]
         return (
             H2("QuickBooks Overview"),
+            range_buttons(),
             kpi_grid(cards),
             Div(
                 Div(H3("Monthly Revenue Trend"), NotStr(QBC.trend(invoices, "revenue")), cls="panel"),
@@ -634,12 +661,13 @@ def render_qb_section(section_key, basis="accrual"):
         )
 
     elif section_key == "sales":
-        kpis = QB.compute_kpis(ds, invoices, date(2020, 1, 1), date.today())
+        kpis = QB.compute_kpis(ds, invoices, start, end)
         cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
                  for k in [kpis["revenue"], kpis["collected"], kpis["invoice_count"], kpis["avg_invoice"]]]
         items = QB.invoice_line_items(invoices)
         return (
             H2("Sales"),
+            range_buttons(),
             kpi_grid(cards),
             Div(
                 Div(H3("Monthly Revenue"), NotStr(QBC.trend(invoices, "revenue")), cls="panel"),
@@ -652,12 +680,13 @@ def render_qb_section(section_key, basis="accrual"):
         )
 
     elif section_key == "finance":
-        kpis = QB.compute_kpis(ds, invoices, date(2020, 1, 1), date.today())
+        kpis = QB.compute_kpis(ds, invoices, start, end)
         cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
                  for k in [kpis["cash"], kpis["outstanding"], kpis["dso"],
                            kpis["working_capital"], kpis["current_ratio"], kpis["total_liabilities"]]]
         return (
             H2("Finance"),
+            range_buttons(),
             kpi_grid(cards),
             Div(
                 Div(H3("Balance Sheet"), NotStr(QBC.balance_sheet(ds.accounts)), cls="panel"),
@@ -670,13 +699,14 @@ def render_qb_section(section_key, basis="accrual"):
         )
 
     elif section_key == "profitability":
-        pnl_sum = QB.pnl_summary(ds.pnl, basis, date(2020, 1, 1), date.today())
-        kpis = QB.pnl_kpis(ds, basis, date(2020, 1, 1), date.today())
+        pnl_sum = QB.pnl_summary(ds.pnl, basis, start, end)
+        kpis = QB.pnl_kpis(ds, basis, start, end)
         cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
                  for k in [kpis["pnl_income"], kpis["pnl_cogs"], kpis["pnl_gross_profit"],
                            kpis["pnl_gross_margin"], kpis["pnl_net_income"], kpis["pnl_net_margin"]]]
         return (
             H2("Profitability"),
+            range_buttons(),
             basis_buttons(),
             kpi_grid(cards),
             Div(
@@ -685,12 +715,12 @@ def render_qb_section(section_key, basis="accrual"):
                 cls="grid two"),
             Div(
                 Div(H3("Monthly P&L Trend"), NotStr(QBC.pnl_trend(ds.pnl, basis)), cls="panel"),
-                Div(H3("Top Expenses"), NotStr(QBC.pnl_expenses(ds.pnl_detail, basis, date(2020, 1, 1), date.today())), cls="panel"),
+                Div(H3("Top Expenses"), NotStr(QBC.pnl_expenses(ds.pnl_detail, basis, start, end)), cls="panel"),
                 cls="grid two mt"),
         )
 
     elif section_key == "customers":
-        kpis = QB.compute_kpis(ds, invoices, date(2020, 1, 1), date.today())
+        kpis = QB.compute_kpis(ds, invoices, start, end)
         cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
                  for k in [kpis["active_customers"], kpis["total_customers"], kpis["outstanding"], kpis["overdue"]]]
         return (
@@ -703,7 +733,7 @@ def render_qb_section(section_key, basis="accrual"):
         )
 
     elif section_key == "accounts":
-        kpis = QB.compute_kpis(ds, invoices, date(2020, 1, 1), date.today())
+        kpis = QB.compute_kpis(ds, invoices, start, end)
         cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
                  for k in [kpis["total_assets"], kpis["total_liabilities"], kpis["equity"], kpis["cash"]]]
         return (
@@ -1092,13 +1122,14 @@ async def index(req):
     platform = req.query_params.get("platform")
     section = req.query_params.get("section", "overview")
     basis = req.query_params.get("basis", "accrual")
+    range_key = req.query_params.get("range", "all")
 
     # Load overview content on initial page load
     if not platform or platform == "overview":
         content = render_overview()
         title = "Overview"
     elif platform == "qb":
-        content = render_qb_section(section or "overview", basis)
+        content = render_qb_section(section or "overview", basis, range_key)
         title = f"QuickBooks - {section.title()}"
     elif platform == "sd":
         content = render_sd_section(section or "hse")
@@ -1121,12 +1152,13 @@ async def view_section(req):
     platform = req.query_params.get("platform", "overview")
     section = req.query_params.get("section", "overview")
     basis = req.query_params.get("basis", "accrual")
+    range_key = req.query_params.get("range", "all")
 
     if platform == "overview":
         return tuple(render_overview())
 
     if platform == "qb":
-        return tuple(render_qb_section(section, basis))
+        return tuple(render_qb_section(section, basis, range_key))
 
     if platform == "sd":
         return tuple(render_sd_section(section))

@@ -134,9 +134,9 @@ table.data td.num { text-align: right; }
 .htmx-indicator { opacity: 0; transition: opacity .2s; font-size: 12px; color: var(--accent); }
 .htmx-request .htmx-indicator { opacity: 1; }
 
-/* Loading spinner & HTMX indicator */
-#loading { display: none; }
-#loading.htmx-request { display: flex; }
+/* Loading spinner & HTMX indicator — shown inside content while swapping */
+#content.htmx-request .loading-zone { display: flex; }
+#content .loading-zone { display: none; }
 .spinner { display:inline-block; width:16px; height:16px; border:2px solid var(--line);
            border-top-color: var(--accent); border-radius:50%; animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -252,7 +252,7 @@ def sidebar(active_platform=None, active_section="overview"):
     nav_items.append(
         A("▦ Overview", cls=ov_class, href="/",
           hx_get="/view?platform=overview", hx_target="#content",
-          hx_indicator="#loading", hx_push_url="true")
+          hx_push_url="true")
     )
 
     for pf in PLATFORMS:
@@ -265,7 +265,7 @@ def sidebar(active_platform=None, active_section="overview"):
                     A(f"{sicon} {slabel}", cls=sub_class,
                       href=f"/?platform={pf['key']}&section={skey}",
                       hx_get=f"/view?platform={pf['key']}&section={skey}",
-                      hx_target="#content", hx_indicator="#loading",
+                      hx_target="#content",
                       hx_push_url="true"),
                 )
             )
@@ -382,8 +382,10 @@ def shell(content, active_platform=None, active_section="overview", title=""):
     )
     return Div(
         sidebar(active_platform, active_section),
-        Div(header, Div(content, id="content"),
-            Div(Div(cls="spinner"), "Loading...", cls="loading-zone", id="loading"),
+        Div(header,
+            Div(content,
+                Div(Div(cls="spinner"), "Loading...", cls="loading-zone"),
+                id="content"),
             cls="main"),
         cls="layout",
     )
@@ -679,7 +681,7 @@ def render_qb_section(section_key, basis="accrual"):
             kpi_grid(cards),
             Div(
                 Div(H3("P&L Waterfall"), NotStr(QBC.pnl_waterfall(pnl_sum)), cls="panel"),
-                Div(H3(f"Income Statement ({basis})"), NotStr(pnl_statement(pnl_sum)), cls="panel"),
+                Div(H3(f"Income Statement ({basis})"), pnl_statement(pnl_sum), cls="panel"),
                 cls="grid two"),
             Div(
                 Div(H3("Monthly P&L Trend"), NotStr(QBC.pnl_trend(ds.pnl, basis)), cls="panel"),

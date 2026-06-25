@@ -22,7 +22,7 @@ except ImportError:
 ACCENT = "#2563eb"
 SEQ = ["#2563eb", "#0e7490", "#7c3aed", "#16a34a", "#ea580c", "#db2777", "#0891b2", "#64748b"]
 
-_PLOT_CONFIG = {"displayModeBar": False, "responsive": True}
+_PLOT_CONFIG = {"displayModeBar": False, "displaylogo": False, "responsive": True}
 _ids = itertools.count()
 
 

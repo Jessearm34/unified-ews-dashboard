@@ -169,14 +169,12 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     return compare_digest(_hash_password(password, salt), stored_hash)
 
 
-def require_login(f):
-    async def wrapper(req, *args, **kwargs):
-        user = req.session.get("user")
-        if not user:
-            return RedirectResponse(f"/login?next={req.url.path}{'?' + urlencode(req.query_params) if req.query_params else ''}", status_code=303)
-        return await f(req, *args, **kwargs)
-    wrapper.__name__ = f.__name__
-    return wrapper
+def require_login(req):
+    """Call inside route handlers. Returns a RedirectResponse if not logged in, else None."""
+    user = req.session.get("user")
+    if not user:
+        return RedirectResponse(f"/login?next={req.url.path}{'?' + urlencode(req.query_params) if req.query_params else ''}", status_code=303)
+    return None
 
 
 # ── Sidebar & navigation data ─────────────────────────────────────────────
@@ -989,8 +987,10 @@ async def logout(req):
 
 
 @rt("/")
-@require_login
 async def index(req):
+    guard = require_login(req)
+    if guard:
+        return guard
     platform = req.query_params.get("platform")
     section = req.query_params.get("section", "overview")
 
@@ -1015,8 +1015,10 @@ async def index(req):
 
 
 @rt("/view")
-@require_login
 async def view_section(req):
+    guard = require_login(req)
+    if guard:
+        return guard
     platform = req.query_params.get("platform", "overview")
     section = req.query_params.get("section", "overview")
 

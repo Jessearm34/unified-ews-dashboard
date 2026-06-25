@@ -422,7 +422,7 @@ def render_overview():
     if qb_ds:
         invoices = QB.filter_invoices(qb_ds.invoices, date(2020, 1, 1), date.today())
         bs = QB.balance_sheet_summary(qb_ds.accounts)
-        pnl = QB.pnl_summary(qb_ds.pnl, "accrual", start, end)
+        pnl = QB.pnl_summary(qb_ds.pnl, "accrual", date(2020, 1, 1), date.today())
         revenue = pnl["income"] if not qb_ds.pnl.empty else (float(invoices["Revenue"].sum()) if not invoices.empty else 0.0)
         qb_kpis = [
             kpi_card("Revenue", revenue, "$", "", platform="QB"),

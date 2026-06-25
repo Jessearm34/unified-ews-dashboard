@@ -985,6 +985,11 @@ async def login_post(req):
     return RedirectResponse(next_url, status_code=303)
 
 
+@rt("/health")
+async def health(req):
+    return "OK"
+
+
 @rt("/logout")
 async def logout(req):
     req.session.clear()

@@ -934,28 +934,23 @@ async def login_page(req):
     if req.session.get("user"):
         return RedirectResponse("/", status_code=303)
     next_url = req.query_params.get("next", "/")
-    return HTML(
-        Head(Title("Login — EWS Dashboard")),
-        Body(
-            Div(
-                Div(
-                    H2("EWS Unified Dashboard", style="margin-bottom:4px;"),
-                    P("Sign in", style="color:var(--muted);margin:0 0 20px;"),
-                    Form(
-                        Input(type="email", name="email", placeholder="you@company.com",
-                              required=True, style="width:100%;padding:10px;margin-bottom:10px;border:1px solid var(--line);border-radius:8px;"),
-                        Input(type="password", name="password", placeholder="Password",
-                              required=True, style="width:100%;padding:10px;margin-bottom:14px;border:1px solid var(--line);border-radius:8px;"),
-                        Input(type="hidden", name="next", value=next_url),
-                        Button("Sign in", type="submit",
-                               style="width:100%;padding:10px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;"),
-                        method="post", action="/login",
-                    ),
-                    style="max-width:360px;margin:80px auto;background:#fff;padding:32px;border-radius:16px;border:1px solid var(--line);"
-                ),
-                style="max-width:400px;margin:0 auto;padding:40px 20px;"
-            )
-        )
+    return Div(
+        Div(
+            H2("EWS Unified Dashboard", style="margin-bottom:4px;"),
+            P("Sign in", style="color:var(--muted);margin:0 0 20px;"),
+            Form(
+                Input(type="email", name="email", placeholder="you@company.com",
+                      required=True, style="width:100%;padding:10px;margin-bottom:10px;border:1px solid var(--line);border-radius:8px;"),
+                Input(type="password", name="password", placeholder="Password",
+                      required=True, style="width:100%;padding:10px;margin-bottom:14px;border:1px solid var(--line);border-radius:8px;"),
+                Input(type="hidden", name="next", value=next_url),
+                Button("Sign in", type="submit",
+                       style="width:100%;padding:10px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;"),
+                method="post", action="/login",
+            ),
+            style="max-width:360px;margin:80px auto;background:#fff;padding:32px;border-radius:16px;border:1px solid var(--line);"
+        ),
+        style="max-width:400px;margin:0 auto;padding:40px 20px;"
     )
 
 

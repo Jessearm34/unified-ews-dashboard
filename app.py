@@ -37,10 +37,12 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
        background: var(--page); color: var(--ink); }
 .layout { display: flex; min-height: 100vh; }
 
-/* Sidebar */
+/* ── Sidebar ── */
 .sidebar { width: 232px; flex: 0 0 232px; background: var(--navy); color: #e8eef5;
-           display: flex; flex-direction: column; padding: 22px 14px; overflow-y: auto; }
+           display: flex; flex-direction: column; padding: 22px 14px; overflow-y: auto;
+           min-height: 100vh; align-self: stretch; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 20px; }
+.layout { display: flex; min-height: 100vh; align-items: stretch; }
 .brand .mark { font-size: 22px; }
 .brand .name { font-weight: 800; font-size: 14px; line-height: 1.15; letter-spacing: .04em; }
 .brand .name small { display:block; font-weight:600; font-size:10px; color:#7e93a8; letter-spacing:.14em; }
@@ -132,11 +134,22 @@ table.data td.num { text-align: right; }
 .htmx-indicator { opacity: 0; transition: opacity .2s; font-size: 12px; color: var(--accent); }
 .htmx-request .htmx-indicator { opacity: 1; }
 
-/* Loading spinner */
+/* Loading spinner & HTMX indicator */
+#loading { display: none; }
+#loading.htmx-request { display: flex; }
 .spinner { display:inline-block; width:16px; height:16px; border:2px solid var(--line);
            border-top-color: var(--accent); border-radius:50%; animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-zone { display:flex; align-items:center; justify-content:center; min-height:200px; color:var(--muted); gap:8px; }
+
+/* Hide Plotly modebar & logo */
+.modebar, .modebar-container, .plotly-notifier,
+.js-plotly-plot .modebar, .js-plotly-plot .modebar-btn,
+.modebar-btn, .modebar-group { display: none !important; }
+
+/* Fix chart panel sizing */
+.panel .js-plotly-plot { width: 100%; }
+.panel .plot-container { width: 100%; }
 
 /* Fade in content on HTMX swap */
 #content { animation: fadein .25s ease; }
@@ -370,7 +383,7 @@ def shell(content, active_platform=None, active_section="overview", title=""):
     return Div(
         sidebar(active_platform, active_section),
         Div(header, Div(content, id="content"),
-            Div(Div(cls="spinner"), "Loading...", cls="loading-zone", id="loading", style="display:none;"),
+            Div(Div(cls="spinner"), "Loading...", cls="loading-zone", id="loading"),
             cls="main"),
         cls="layout",
     )

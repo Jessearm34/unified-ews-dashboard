@@ -560,7 +560,7 @@ def gt_safe_connect():
 
 # ── Platform section renderers ─────────────────────────────────────────────
 
-def render_qb_section(section_key):
+def render_qb_section(section_key, basis="accrual"):
     """Render a QuickBooks sub-tab."""
     ds = qb_safe_load()
     if not ds:
@@ -569,6 +569,47 @@ def render_qb_section(section_key):
     from charts import qb_charts as QBC
 
     invoices = QB.filter_invoices(ds.invoices, date(2020, 1, 1), date.today())
+
+    # ── Helper: basis toggle ──
+    def basis_buttons():
+        btns = []
+        for key, label in [("accrual", "Accrual"), ("cash", "Cash")]:
+            active = "active" if basis.lower() == key else ""
+            btns.append(
+                Button(label, cls=f"preset {active}",
+                       hx_get=f"/view?platform=qb&section={section_key}&basis={key}",
+                       hx_target="#content", hx_indicator="#loading")
+            )
+        return Div(Span("Basis:", cls="lbl"), *btns,
+                   Span("QuickBooks ProfitAndLoss", cls="note", style="margin-left:10px;"),
+                   cls="controls", style="margin-top:0;")
+
+    # ── Helper: P&L statement table ──
+    def pnl_statement(summary):
+        def _signed(v):
+            return f"-${abs(v):,.2f}" if v < 0 else f"${v:,.2f}"
+        def row(label, value, total=False, pct=False, indent=False):
+            txt = f"{value:,.1f}%" if pct else _signed(value)
+            neg = (not pct and value < 0) or (pct and value < 0)
+            style = "font-weight:700;" if total else ""
+            if neg: style += "color: var(--bad);"
+            lc = Td(label, style=("padding-left:24px;color:var(--muted);" if indent else ("font-weight:700;" if total else "")))
+            rs = "border-top:2px solid var(--line);" if total else ""
+            return Tr(lc, Td(txt, cls="num", style=style), style=rs)
+        s = summary
+        body = [
+            row("Income", s["income"]),
+            row("Cost of Goods Sold", -s["cogs"]),
+            row("Gross Profit", s["gross_profit"], total=True),
+            row("Gross Margin", s["gross_margin"], pct=True, indent=True),
+            row("Operating Expenses", -s["expenses"]),
+            row("Net Operating Income", s["net_operating_income"], total=True),
+            row("Other Income", s["other_income"]),
+            row("Other Expenses", -s["other_expenses"]),
+            row("Net Income", s["net_income"], total=True),
+            row("Net Margin", s["net_margin"], pct=True, indent=True),
+        ]
+        return Div(Table(Thead(Tr(Th("Line item"), Th("Amount", cls="num"))), Tbody(*body), cls="data"), cls="tbl-wrap")
 
     if section_key == "overview":
         kpis = QB.compute_kpis(ds, invoices, date(2020, 1, 1), date.today())
@@ -627,21 +668,22 @@ def render_qb_section(section_key):
         )
 
     elif section_key == "profitability":
-        bs = QB.balance_sheet_summary(ds.accounts)
-        pnl_sum = QB.pnl_summary(ds.pnl, "accrual", date(2020, 1, 1), date.today())
-        kpis = QB.pnl_kpis(ds, "accrual", date(2020, 1, 1), date.today())
+        pnl_sum = QB.pnl_summary(ds.pnl, basis, date(2020, 1, 1), date.today())
+        kpis = QB.pnl_kpis(ds, basis, date(2020, 1, 1), date.today())
         cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
                  for k in [kpis["pnl_income"], kpis["pnl_cogs"], kpis["pnl_gross_profit"],
                            kpis["pnl_gross_margin"], kpis["pnl_net_income"], kpis["pnl_net_margin"]]]
         return (
             H2("Profitability"),
+            basis_buttons(),
             kpi_grid(cards),
             Div(
                 Div(H3("P&L Waterfall"), NotStr(QBC.pnl_waterfall(pnl_sum)), cls="panel"),
-                Div(H3("Monthly P&L Trend"), NotStr(QBC.pnl_trend(ds.pnl, "accrual")), cls="panel"),
+                Div(H3(f"Income Statement ({basis})"), NotStr(pnl_statement(pnl_sum)), cls="panel"),
                 cls="grid two"),
             Div(
-                Div(H3("Top Expenses"), NotStr(QBC.pnl_expenses(ds.pnl_detail, "accrual", date(2020, 1, 1), date.today())), cls="panel"),
+                Div(H3("Monthly P&L Trend"), NotStr(QBC.pnl_trend(ds.pnl, basis)), cls="panel"),
+                Div(H3("Top Expenses"), NotStr(QBC.pnl_expenses(ds.pnl_detail, basis, date(2020, 1, 1), date.today())), cls="panel"),
                 cls="grid two mt"),
         )
 
@@ -1047,13 +1089,14 @@ async def index(req):
         return guard
     platform = req.query_params.get("platform")
     section = req.query_params.get("section", "overview")
+    basis = req.query_params.get("basis", "accrual")
 
     # Load overview content on initial page load
     if not platform or platform == "overview":
         content = render_overview()
         title = "Overview"
     elif platform == "qb":
-        content = render_qb_section(section or "overview")
+        content = render_qb_section(section or "overview", basis)
         title = f"QuickBooks - {section.title()}"
     elif platform == "sd":
         content = render_sd_section(section or "hse")
@@ -1075,12 +1118,13 @@ async def view_section(req):
         return guard
     platform = req.query_params.get("platform", "overview")
     section = req.query_params.get("section", "overview")
+    basis = req.query_params.get("basis", "accrual")
 
     if platform == "overview":
         return tuple(render_overview())
 
     if platform == "qb":
-        return tuple(render_qb_section(section))
+        return tuple(render_qb_section(section, basis))
 
     if platform == "sd":
         return tuple(render_sd_section(section))

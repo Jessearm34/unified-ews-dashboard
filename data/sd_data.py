@@ -16,7 +16,7 @@ from typing import Any
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-_CACHE_TTL = 60
+_CACHE_TTL = 300
 _DATASET_CACHE: SdDataset | None = None
 _CACHE_TIMESTAMP: float = 0.0
 

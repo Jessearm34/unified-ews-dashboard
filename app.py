@@ -89,21 +89,21 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
 .preset.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* KPI cards */
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
-.kpi { background: var(--card); border:1px solid var(--line); border-radius: 16px; padding: 14px 16px;
-       text-decoration: none; color: inherit; }
-.kpi:hover { box-shadow: 0 8px 20px rgba(15,23,42,.08); }
-.kpi .k-label { color: var(--muted); font-size: 12px; font-weight: 600; display:flex; align-items:center; gap:6px; }
-.kpi .k-label .k-platform { font-size:10px; background:#e2e8f0; color:#475569; padding:1px 6px; border-radius:4px; font-weight:700; }
-.kpi .k-value { font-size: 26px; font-weight: 800; margin: 4px 0 2px; }
-.kpi .k-hint { color:#94a3b8; font-size: 11px; }
-.kpi .k-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px;
-                border-radius: 999px; margin-left: 6px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.kpi { background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+       text-decoration: none; color: inherit; transition: box-shadow .15s; }
+.kpi:hover { box-shadow: 0 4px 12px rgba(15,23,42,.06); }
+.kpi .k-label { color: var(--muted); font-size: 11px; font-weight: 600; display:flex; align-items:center; gap:4px; white-space: nowrap; }
+.kpi .k-label .k-platform { font-size:9px; background:#e2e8f0; color:#475569; padding:1px 5px; border-radius:3px; font-weight:700; }
+.kpi .k-value { font-size: 22px; font-weight: 800; margin: 2px 0 0; line-height: 1.2; }
+.kpi .k-hint { color:#94a3b8; font-size: 10px; margin-top:1px; }
+.kpi .k-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px;
+                border-radius: 999px; margin-left: 4px; }
 .kpi .k-badge.green { background:#dcfce7; color:#15803d; }
 .kpi .k-badge.warn { background:#fef3c7; color:#92400e; }
 .kpi .k-badge.red { background:#fee2e2; color:#b91c1c; }
 
-.kpi-rag { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
+.kpi-rag { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:3px; flex-shrink:0; }
 
 /* Panels */
 .grid { display: grid; gap: 16px; }
@@ -131,6 +131,16 @@ table.data td.num { text-align: right; }
 .note { color: var(--muted); font-size: 12px; }
 .htmx-indicator { opacity: 0; transition: opacity .2s; font-size: 12px; color: var(--accent); }
 .htmx-request .htmx-indicator { opacity: 1; }
+
+/* Loading spinner */
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid var(--line);
+           border-top-color: var(--accent); border-radius:50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-zone { display:flex; align-items:center; justify-content:center; min-height:200px; color:var(--muted); gap:8px; }
+
+/* Fade in content on HTMX swap */
+#content { animation: fadein .25s ease; }
+@keyframes fadein { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
 """)
 
 app, rt = fast_app(
@@ -228,7 +238,8 @@ def sidebar(active_platform=None, active_section="overview"):
     ov_class = "nav-link active" if active_platform is None else "nav-link"
     nav_items.append(
         A("▦ Overview", cls=ov_class, href="/",
-          hx_get="/view?platform=overview", hx_target="#content", hx_push_url="true")
+          hx_get="/view?platform=overview", hx_target="#content",
+          hx_indicator="#loading", hx_push_url="true")
     )
 
     for pf in PLATFORMS:
@@ -241,7 +252,8 @@ def sidebar(active_platform=None, active_section="overview"):
                     A(f"{sicon} {slabel}", cls=sub_class,
                       href=f"/?platform={pf['key']}&section={skey}",
                       hx_get=f"/view?platform={pf['key']}&section={skey}",
-                      hx_target="#content", hx_push_url="true"),
+                      hx_target="#content", hx_indicator="#loading",
+                      hx_push_url="true"),
                 )
             )
         nav_items.append(
@@ -357,7 +369,9 @@ def shell(content, active_platform=None, active_section="overview", title=""):
     )
     return Div(
         sidebar(active_platform, active_section),
-        Div(header, Div(content, id="content"), cls="main"),
+        Div(header, Div(content, id="content"),
+            Div(Div(cls="spinner"), "Loading...", cls="loading-zone", id="loading", style="display:none;"),
+            cls="main"),
         cls="layout",
     )
 

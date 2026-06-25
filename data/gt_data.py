@@ -24,11 +24,11 @@ import logging
 import os
 import threading
 import time
+from dataclasses import dataclass
 from collections.abc import Generator
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
-from pydantic import BaseModel
 from sqlalchemy import (
     Date,
     Float,
@@ -251,7 +251,8 @@ class FaultCode(Base, TimestampMixin):
 # ── Pydantic Schemas (copied from geotab-fleet-dashboard/schemas.py) ─── #
 
 
-class FleetSummary(BaseModel):
+@dataclass
+class FleetSummary:
     total_vehicles: int
     active_vehicles: int
     total_fleet_miles: float

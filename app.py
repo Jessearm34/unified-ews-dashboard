@@ -930,18 +930,37 @@ async def health(req):
 
 
 @rt("/login")
-async def login_page(req):
+async def login(req):
     if req.session.get("user"):
         return RedirectResponse("/", status_code=303)
+    error = None
     next_url = req.query_params.get("next", "/")
-    error = req.query_params.get("error")
-    error_msg = Div(P("Invalid email or password.", style="color:var(--bad);font-size:13px;margin-bottom:12px;"),
-                    style="background:#fef2f2;padding:10px 14px;border-radius:8px;border:1px solid #fecaca;") if error else ""
-    return Div(
+    if req.method == "POST":
+        form = await req.form()
+        email = (form.get("email") or "").strip().lower()
+        password = form.get("password") or ""
+        next_url = form.get("next") or "/"
+        # Validate email domain
+        if AUTH_DOMAIN and not email.endswith(f"@{AUTH_DOMAIN}"):
+            error = "Invalid email or password."
+        # Validate password
+        elif AUTH_PASSWORD_HASH:
+            if not _verify_password(password, AUTH_PASSWORD_HASH):
+                error = "Invalid email or password."
+        elif AUTH_PASSWORD:
+            if not compare_digest(password.encode(), AUTH_PASSWORD.encode()):
+                error = "Invalid email or password."
+        else:
+            error = "No password configured."
+        if not error:
+            req.session["user"] = email
+            return RedirectResponse(next_url, status_code=303)
+    return Title("Login"), Div(
         Div(
             H2("EWS Unified Dashboard", style="margin-bottom:4px;"),
             P("Sign in", style="color:var(--muted);margin:0 0 20px;"),
-            error_msg,
+            Div(P(error, style="color:var(--bad);font-size:13px;margin-bottom:12px;"),
+                style="background:#fef2f2;padding:10px 14px;border-radius:8px;border:1px solid #fecaca;") if error else "",
             Form(
                 Input(type="email", name="email", placeholder="you@company.com",
                       required=True, style="width:100%;padding:10px;margin-bottom:10px;border:1px solid var(--line);border-radius:8px;"),
@@ -956,32 +975,6 @@ async def login_page(req):
         ),
         style="max-width:400px;margin:0 auto;padding:40px 20px;"
     )
-
-
-@rt("/login", methods=["POST"])
-async def login_post(req):
-    form = await req.form()
-    email = (form.get("email") or "").strip().lower()
-    password = form.get("password") or ""
-    next_url = form.get("next") or "/"
-
-    # Validate email domain
-    if AUTH_DOMAIN:
-        if not email.endswith(f"@{AUTH_DOMAIN}"):
-            return RedirectResponse("/login?error=invalid", status_code=303)
-
-    # Validate password
-    if AUTH_PASSWORD_HASH:
-        if not _verify_password(password, AUTH_PASSWORD_HASH):
-            return RedirectResponse("/login?error=invalid", status_code=303)
-    elif AUTH_PASSWORD:
-        if not compare_digest(password.encode(), AUTH_PASSWORD.encode()):
-            return RedirectResponse("/login?error=invalid", status_code=303)
-    else:
-        return RedirectResponse("/login?error=invalid", status_code=303)
-
-    req.session["user"] = email
-    return RedirectResponse(next_url, status_code=303)
 
 
 @rt("/health")

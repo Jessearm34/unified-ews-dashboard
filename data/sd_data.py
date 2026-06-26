@@ -29,7 +29,7 @@ def sd_engine():
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif url.startswith("postgresql://") and "+psycopg2" not in url:
-        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
     connect_args = {"sslmode": "require"}
     return create_engine(url, connect_args=connect_args)
 

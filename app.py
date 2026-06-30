@@ -1168,7 +1168,7 @@ async def sd_forms(req):
                  hx_get="/view?platform=sd&section=hse", hx_target="#content")
         return Div(
             H3("Forms in " + month, style="margin:0 0 8px;font-size:14px;"),
-            Div("<table class='data'><thead>" + h + "</thead><tbody>" + "".join(rows) + "</tbody></table>",
+            Div(NotStr("<table class='data'><thead>" + h + "</thead><tbody>" + "".join(rows) + "</tbody></table>"),
                 cls="tbl-wrap"),
             back,
             cls="panel", id="sd-forms-chart",

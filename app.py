@@ -63,7 +63,7 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
 /* ── Sidebar ── */
 .sidebar { width: 232px; flex: 0 0 232px; background: var(--navy); color: #e8eef5;
            display: flex; flex-direction: column; padding: 22px 14px; overflow-y: auto;
-           min-height: 100vh; align-self: stretch; }
+           position: sticky; top: 0; height: 100vh; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 20px; }
 .layout { display: flex; min-height: 100vh; align-items: stretch; }
 .brand .mark { font-size: 22px; }
@@ -114,7 +114,7 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
 .preset.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* KPI cards */
-.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
 .kpi-group { margin-bottom: 4px; }
 .kpi-group-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
                    color: var(--muted); margin: 0 0 4px 2px; display: flex; align-items: center; gap: 6px; }

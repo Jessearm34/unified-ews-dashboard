@@ -1299,6 +1299,71 @@ async def gt_sync_now(req):
         return Pre(f"Error: {e}\n{traceback.format_exc()}")
 
 
+@rt("/_gt_inspect_trip")
+async def gt_inspect_trip(req):
+    """Show sample raw trip data from Geotab API to check driver field."""
+    import requests, json
+    try:
+        gt_db = os.getenv("GEOTAB_DATABASE")
+        gt_user = os.getenv("GEOTAB_USERNAME")
+        gt_pass = os.getenv("GEOTAB_PASSWORD")
+        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
+        if not all([gt_db, gt_user, gt_pass]):
+            return Pre("ERROR: missing Geotab credentials")
+
+        base = f"https://{gt_server}/apiv1"
+        auth_resp = requests.post(base, json={
+            "method": "Authenticate",
+            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
+        }, timeout=30)
+        auth_data = auth_resp.json()
+        if "error" in auth_data:
+            return Pre(f"Auth error: {auth_data['error']}")
+        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
+
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc)
+        since = now - datetime.timedelta(days=7)
+        
+        # Fetch just 3 trips to inspect
+        get_resp = requests.post(base, json={
+            "method": "Get",
+            "params": {
+                "typeName": "Trip",
+                "credentials": creds,
+                "search": {"fromDate": since.isoformat().replace("+00:00", "Z")},
+                "resultsLimit": 3,
+            }
+        }, timeout=60)
+        raw = get_resp.json()
+        trips = raw.get("result", [])
+        if not trips:
+            # Try without date filter
+            get_resp = requests.post(base, json={
+                "method": "Get",
+                "params": {"typeName": "Trip", "credentials": creds, "resultsLimit": 3}
+            }, timeout=60)
+            raw = get_resp.json()
+            trips = raw.get("result", [])
+        
+        out = []
+        out.append(f"Total trips returned: {len(trips)}")
+        for i, t in enumerate(trips):
+            out.append(f"\n--- Trip {i+1} ---")
+            out.append(f"ID: {t.get('id')}")
+            out.append(f"device: {t.get('device')}")
+            out.append(f"driver: {t.get('driver')}")
+            # Show all keys
+            out.append(f"All keys: {', '.join(sorted(t.keys()))}")
+            # Show relevant values
+            for key in ['start', 'stop', 'distance', 'idlingDuration']:
+                out.append(f"  {key}: {t.get(key)}")
+        
+        return Pre("\n".join(out))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\n{traceback.format_exc()}")
+
 @rt("/_gt_resync_trips")
 async def gt_resync_trips(req):
     """Re-fetch all trips from Geotab to populate driver_id on existing records."""

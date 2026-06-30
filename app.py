@@ -1299,6 +1299,96 @@ async def gt_sync_now(req):
         return Pre(f"Error: {e}\n{traceback.format_exc()}")
 
 
+@rt("/_gt_resync_trips")
+async def gt_resync_trips(req):
+    """Re-fetch all trips from Geotab to populate driver_id on existing records."""
+    from sqlalchemy import text
+    import requests
+    try:
+        gt_db = os.getenv("GEOTAB_DATABASE")
+        gt_user = os.getenv("GEOTAB_USERNAME")
+        gt_pass = os.getenv("GEOTAB_PASSWORD")
+        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
+        if not all([gt_db, gt_user, gt_pass]):
+            return Pre("ERROR: missing Geotab credentials")
+
+        base = f"https://{gt_server}/apiv1"
+        auth_resp = requests.post(base, json={
+            "method": "Authenticate",
+            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
+        }, timeout=30)
+        auth_data = auth_resp.json()
+        if "error" in auth_data:
+            return Pre(f"Auth error: {auth_data['error']}")
+        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
+
+        # Fetch trips from Geotab (30 days lookback, since DB shows trips up to June 23)
+        import json
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc)
+        since = now - datetime.timedelta(days=60)
+        get_resp = requests.post(base, json={
+            "method": "Get",
+            "params": {
+                "typeName": "Trip",
+                "credentials": creds,
+                "search": {"fromDate": since.isoformat().replace("+00:00", "Z")},
+                "resultsLimit": 50000,
+            }
+        }, timeout=120)
+        raw = get_resp.json()
+        trips_raw = raw.get("result", [])
+        if not isinstance(trips_raw, list):
+            return Pre(f"Unexpected response: {json.dumps(raw)[:500]}")
+
+        # Build driver geotab_id -> DB id map
+        db = load_gt()
+        driver_rows = db.execute(text("SELECT id, geotab_id FROM drivers")).all()
+        driver_map = {r.geotab_id: r.id for r in driver_rows}
+        
+        # Build vehicle geotab_id -> DB id map
+        vehicle_rows = db.execute(text("SELECT id, geotab_id FROM vehicles")).all()
+        vehicle_map = {v.geotab_id: v.id for v in vehicle_rows}
+
+        updated = 0
+        skipped = 0
+        for trip in trips_raw:
+            trip_id = str(trip.get("id", ""))
+            if not trip_id:
+                continue
+            # Extract driver from trip - Geotab returns "driver": {"id": "b3AE"}
+            driver_raw = trip.get("driver")
+            driver_geotab = None
+            if isinstance(driver_raw, dict):
+                driver_geotab = str(driver_raw.get("id", ""))
+            elif driver_raw:
+                driver_geotab = str(driver_raw)
+            driver_db_id = driver_map.get(driver_geotab) if driver_geotab else None
+
+            # Extract vehicle
+            device_raw = trip.get("device")
+            vehicle_geotab = None
+            if isinstance(device_raw, dict):
+                vehicle_geotab = str(device_raw.get("id", ""))
+            vehicle_db_id = vehicle_map.get(vehicle_geotab) if vehicle_geotab else None
+
+            if not vehicle_db_id:
+                skipped += 1
+                continue
+
+            db.execute(text(
+                "UPDATE trips SET driver_id=:did, vehicle_id=:vid "
+                "WHERE geotab_trip_id=:tid"
+            ), {"did": driver_db_id, "vid": vehicle_db_id, "tid": trip_id})
+            updated += 1
+
+        db.commit()
+        db.close()
+        return Pre(f"Processed {len(trips_raw)} trips from Geotab. Updated {updated} (skipped {skipped} no-vehicle).")
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\n{traceback.format_exc()}")
+
 @rt("/_gt_sync_logs")
 async def gt_sync_logs(req):
     """Show sync log entries from the GT database."""

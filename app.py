@@ -217,6 +217,7 @@ def require_login(req):
 
 # ── Sidebar & navigation data ─────────────────────────────────────────────
 
+# Platform definitions (checked lazily for empty sections)
 PLATFORMS = [
     {
         "key": "qb",
@@ -239,13 +240,7 @@ PLATFORMS = [
             ("hse", "HSE Overview", "🛡️"),
             ("forms", "Forms & JSAs", "📋"),
             ("compliance", "Compliance", "✅"),
-            ("incidents", "Incidents", "⚠️"),
             ("workers", "Workers", "👷"),
-            ("certifications", "Certifications", "🎓"),
-            ("equipment", "Equipment", "🔧"),
-            ("locations", "Locations", "📍"),
-            ("signatures", "Signatures", "✍️"),
-            ("reports", "Reports & Trends", "📊"),
         ],
     },
     {
@@ -820,11 +815,11 @@ def render_sd_section(section_key):
             H2("Forms & JSAs"),
             kpi_grid(cards),
             Div(
-                Div(H3("Forms by Category"), NotStr(SDC.form_category_chart(ds.forms)), cls="panel"),
-                Div(H3("Monthly Trend"), NotStr(SDC.forms_trend(ds.forms)), cls="panel"),
+                _chart("Forms by Category", SDC.form_category_chart, ds.forms),
+                _chart("Monthly Trend", SDC.forms_trend, ds.forms),
                 cls="grid two"),
             Div(
-                Div(H3("Forms by Type"), NotStr(SDC.form_types_chart(ds.formtypes, ds.forms)), cls="panel"),
+                _chart("Forms by Type", SDC.form_types_chart, ds.formtypes, ds.forms),
                 cls="mt"),
         )
 
@@ -850,25 +845,7 @@ def render_sd_section(section_key):
                 cls="mt"),
         )
 
-    elif section_key == "incidents":
-        inc_c = SD.incident_counts(ds.incidents)
-        cards = [
-            kpi_card("Total Incidents", float(inc_c["total"]), ""),
-            kpi_card("Open", float(inc_c["open"]), ""),
-            kpi_card("Investigation", float(inc_c["investigation"]), ""),
-            kpi_card("YTD", float(inc_c["ytd"]), ""),
-        ]
-        return (
-            H2("Incidents"),
-            kpi_grid(cards),
-            Div(
-                Div(H3("Incident Trend"), NotStr(SDC.incident_trend(ds.incidents)), cls="panel"),
-                Div(H3("By Type"), NotStr(SDC.incident_by_type(ds.incidents)), cls="panel"),
-                cls="grid two"),
-            Div(
-                Div(H3("Status Breakdown"), NotStr(SDC.incident_status_pie(ds.incidents)), cls="panel"),
-                cls="grid two mt"),
-        )
+
 
     elif section_key == "workers":
         w_count = SD.worker_counts(ds.workers)
@@ -893,86 +870,15 @@ def render_sd_section(section_key):
                 cls="mt"),
         )
 
-    elif section_key == "certifications":
-        cert_c = SD.cert_summary(ds.certifications, ds.workers)
-        cards = [
-            kpi_card("Total Certs", float(cert_c["total"]), ""),
-            kpi_card("Active", float(cert_c["active"]), ""),
-            kpi_card("Expired", float(cert_c["expired"]), ""),
-        ]
-        return (
-            H2("Certifications"),
-            kpi_grid(cards),
-            Div(
-                Div(H3("Expiry Profile"), NotStr(SDC.cert_expiry_profile(ds.certifications)), cls="panel"),
-                Div(H3("Coverage"), NotStr(SDC.cert_coverage(ds.certifications, ds.workers)), cls="panel"),
-                cls="grid two"),
-        )
 
-    elif section_key == "equipment":
-        eq_c = SD.equipment_counts(ds.equipment)
-        cards = [
-            kpi_card("Total Equipment", float(eq_c["total"]), ""),
-            kpi_card("Active", float(eq_c["active"]), ""),
-        ]
-        return (
-            H2("Equipment"),
-            kpi_grid(cards),
-            Div(
-                Div(H3("By Type"), NotStr(SDC.equipment_by_type(ds.equipment)), cls="panel"),
-                Div(H3("Status"), NotStr(SDC.equipment_status(ds.equipment)), cls="panel"),
-                cls="grid two"),
-        )
 
-    elif section_key == "locations":
-        loc_c = SD.location_counts(ds.locations)
-        f_count = SD.form_counts(ds.forms)
-        cards = [
-            kpi_card("Locations", float(loc_c["total"]), ""),
-            kpi_card("Forms Submitted", float(f_count["total"]), ""),
-        ]
-        return (
-            H2("Locations"),
-            kpi_grid(cards),
-            Div(
-                Div(H3("Forms Trend"), NotStr(SDC.forms_trend(ds.forms)), cls="panel"),
-                cls="grid two"),
-        )
 
-    elif section_key == "signatures":
-        sig_c = SD.signature_counts(ds.signatures)
-        sched_c = SD.schedule_counts(ds.schedules)
-        cards = [
-            kpi_card("Signatures", float(sig_c["total"]), ""),
-            kpi_card("Schedule Items", float(sched_c["total"]), ""),
-        ]
-        return (
-            H2("Signatures"),
-            kpi_grid(cards),
-            Div(
-                Div(H3("Schedule Compliance"), NotStr(SDC.schedule_compliance(ds.schedules)), cls="panel"),
-                cls="grid two"),
-        )
 
-    elif section_key == "reports":
-        f_count = SD.form_counts(ds.forms)
-        sched_c = SD.schedule_counts(ds.schedules)
-        sig_c = SD.signature_counts(ds.signatures)
-        loc_c = SD.location_counts(ds.locations)
-        cards = [
-            kpi_card("Forms", float(f_count["total"]), ""),
-            kpi_card("Schedules", float(sched_c["total"]), "", hint=f"{sched_c['completed']} completed"),
-            kpi_card("Signatures", float(sig_c["total"]), ""),
-            kpi_card("Locations", float(loc_c["total"]), ""),
-        ]
-        return (
-            H2("Reports & Trends"),
-            kpi_grid(cards),
-            Div(
-                Div(H3("Forms Trend"), NotStr(SDC.forms_trend(ds.forms)), cls="panel"),
-                Div(H3("Schedule Compliance"), NotStr(SDC.schedule_compliance(ds.schedules)), cls="panel"),
-                cls="grid two"),
-        )
+
+
+
+
+
 
     return Div(H2("SiteDocs"), Div("Section not found.", cls="chart-empty"))
 

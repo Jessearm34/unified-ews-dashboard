@@ -588,6 +588,19 @@ def load_gt():
 
 # ── Platform section renderers ─────────────────────────────────────────────
 
+
+
+def _chart(label, fn, *args, **kw):
+    """Render a chart. Returns empty string if chart has nothing to show."""
+    try:
+        html = fn(*args, **kw)
+        if not html or 'chart-empty' in str(html) or 'No data' in str(html) or 'No schedule' in str(html):
+            return ""
+        return Div(H3(label), NotStr(html), cls="panel")
+    except Exception:
+        return ""
+
+
 def render_qb_section(section_key, basis="accrual", range_key="all"):
     """Render a QuickBooks sub-tab."""
     ds = _cached("qb", load_qb)

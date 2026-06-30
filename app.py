@@ -41,13 +41,18 @@ def resolve_date_range(range_key, end_date=None):
         return end - timedelta(days=30), end
     if range_key == "90d":
         return end - timedelta(days=90), end
+    if range_key == "lm":
+        # Last completed month
+        lm_end = date(end.year, end.month, 1) - timedelta(days=1)
+        lm_start = date(lm_end.year, lm_end.month, 1)
+        return lm_start, lm_end
     if range_key == "12m":
         return date(end.year - 1, 1, 1), date(end.year - 1, 12, 31)
     if range_key == "ly":
         return date(end.year - 1, 1, 1), date(end.year - 1, 12, 31)
     return date(2020, 1, 1), end
 
-RANGE_PRESETS = [("all","All"), ("ytd","YTD"), ("30d","30d"), ("90d","90d"), ("ly","Last year")]
+RANGE_PRESETS = [("ytd","YTD"), ("lm","Last month"), ("30d","30d"), ("90d","90d"), ("ly","Last year"), ("all","All")]
 
 STYLE = Style("""
 :root {
@@ -576,6 +581,7 @@ def render_overview(range_key="all"):
             except Exception:
                 pass
 
+    parts.insert(0, ov_range_buttons())
     if charts:
         parts.append(Div(*charts, cls="grid two"))
     if sd_ds and not sd_ds.forms.empty:
@@ -1179,7 +1185,7 @@ async def index(req):
 
     # Load overview content on initial page load
     if not platform or platform == "overview":
-        content = render_overview(req.query_params.get("range", "ly"))
+        content = render_overview(req.query_params.get("range", "ytd"))
         title = "Overview"
     elif platform == "qb":
         content = render_qb_section(section or "overview", basis, range_key, req.query_params.get("metric", "revenue"))
@@ -1191,7 +1197,7 @@ async def index(req):
         content = render_gt_section(section or "fleet")
         title = "GeoTab Fleet"
     else:
-        content = render_overview(req.query_params.get("range", "ly"))
+        content = render_overview(req.query_params.get("range", "ytd"))
         title = "Overview"
 
     return shell(content, active_platform=platform, active_section=section or "overview", title=title)
@@ -1208,7 +1214,7 @@ async def view_section(req):
     range_key = req.query_params.get("range", "all")
 
     if platform == "overview":
-        return tuple(render_overview(req.query_params.get("range", "ly")))
+        return tuple(render_overview(req.query_params.get("range", "ytd")))
 
     if platform == "qb":
         return tuple(render_qb_section(section, basis, range_key, req.query_params.get("metric", "revenue")))

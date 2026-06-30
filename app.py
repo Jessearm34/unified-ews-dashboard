@@ -42,13 +42,12 @@ def resolve_date_range(range_key, end_date=None):
     if range_key == "90d":
         return end - timedelta(days=90), end
     if range_key == "12m":
-        s = date(end.year - 1, end.month, 1)
-        if s.day > end.day:
-            s = s - timedelta(days=s.day - end.day)
-        return s, end
+        return date(end.year - 1, 1, 1), date(end.year - 1, 12, 31)
+    if range_key == "ly":
+        return date(end.year - 1, 1, 1), date(end.year - 1, 12, 31)
     return date(2020, 1, 1), end
 
-RANGE_PRESETS = [("all","All"), ("ytd","YTD"), ("30d","30d"), ("90d","90d"), ("12m","12m")]
+RANGE_PRESETS = [("all","All"), ("ytd","YTD"), ("30d","30d"), ("90d","90d"), ("ly","Last year")]
 
 STYLE = Style("""
 :root {
@@ -1149,7 +1148,7 @@ async def index(req):
 
     # Load overview content on initial page load
     if not platform or platform == "overview":
-        content = render_overview(req.query_params.get("range", "12m"))
+        content = render_overview(req.query_params.get("range", "ly"))
         title = "Overview"
     elif platform == "qb":
         content = render_qb_section(section or "overview", basis, range_key, req.query_params.get("metric", "revenue"))
@@ -1161,7 +1160,7 @@ async def index(req):
         content = render_gt_section(section or "fleet")
         title = "GeoTab Fleet"
     else:
-        content = render_overview(req.query_params.get("range", "12m"))
+        content = render_overview(req.query_params.get("range", "ly"))
         title = "Overview"
 
     return shell(content, active_platform=platform, active_section=section or "overview", title=title)
@@ -1178,7 +1177,7 @@ async def view_section(req):
     range_key = req.query_params.get("range", "all")
 
     if platform == "overview":
-        return tuple(render_overview(req.query_params.get("range", "12m")))
+        return tuple(render_overview(req.query_params.get("range", "ly")))
 
     if platform == "qb":
         return tuple(render_qb_section(section, basis, range_key, req.query_params.get("metric", "revenue")))

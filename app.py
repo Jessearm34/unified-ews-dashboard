@@ -489,7 +489,6 @@ def render_overview():
 
     # ── Charts: 2×2 grid (only render if data exists) ──
     charts = []
-    debug = []
 
     # 1. Monthly Revenue Trend (QB)
     if qb_ds:
@@ -498,35 +497,20 @@ def render_overview():
             inv = QB.filter_invoices(qb_ds.invoices, date(2020, 1, 1), date.today())
             if not inv.empty:
                 charts.append(Div(H3("Monthly Revenue Trend"), NotStr(QBC.trend(inv, "revenue")), cls="panel"))
-                debug.append("QB-revenue:OK")
-            else:
-                debug.append("QB-revenue:SKIP(empty)")
-        except Exception as e:
-            debug.append(f"QB-revenue:ERR({e})")
-    else:
-        debug.append("QB-revenue:SKIP(no-ds)")
+        except Exception:
+            pass
 
     # 2. Schedule Compliance (SD)
-    schedule_total = 0
     if sd_ds:
-        debug.append(f"SD-schedules-empty:{sd_ds.schedules.empty}")
         if not sd_ds.schedules.empty:
             try:
                 sched_c = SD.schedule_counts(sd_ds.schedules)
                 schedule_total = sched_c.get("total", 0)
-                debug.append(f"SD-schedules-total:{schedule_total}")
                 if schedule_total > 0:
                     from charts import sd_charts as SDC
                     charts.append(Div(H3("Schedule Compliance"), NotStr(SDC.schedule_compliance(sd_ds.schedules)), cls="panel"))
-                    debug.append("SD-compliance:OK")
-                else:
-                    debug.append("SD-compliance:SKIP(total=0)")
-            except Exception as e:
-                debug.append(f"SD-compliance:ERR({e})")
-        else:
-            debug.append("SD-compliance:SKIP(empty-df)")
-    else:
-        debug.append("SD-compliance:SKIP(no-ds)")
+            except Exception:
+                pass
 
     # 3. Fleet Daily Mileage (GT)
     if gt_conn:
@@ -535,7 +519,6 @@ def render_overview():
             db = gt_conn
             since_365 = datetime.now(timezone.utc) - timedelta(days=365)
             trends = GT.gt_daily_trends(db, since_365, datetime.now(timezone.utc))
-            debug.append(f"GT-trends-len:{len(trends)}")
             speed = GT.gt_speed_analysis(db, since_365, datetime.now(timezone.utc))
             vehicle_util = GT.gt_vehicle_utilization(db, since_365, datetime.now(timezone.utc))
             idling = GT.gt_idling_summary(db, since_365, datetime.now(timezone.utc))
@@ -544,35 +527,21 @@ def render_overview():
                        "idling": idling, "locations": locations}
             if trends:
                 charts.append(Div(H3("Daily Mileage Trend"), NotStr(GTC.daily_mileage_chart(gt_data)), cls="panel"))
-                debug.append("GT-mileage:OK")
-            else:
-                debug.append("GT-mileage:SKIP(no-trends)")
             db.close()
-        except Exception as e:
-            debug.append(f"GT-mileage:ERR({e})")
-    else:
-        debug.append("GT-mileage:SKIP(no-conn)")
+        except Exception:
+            pass
 
     # 4. Forms Monthly Trend (SD)
     if sd_ds:
-        debug.append(f"SD-forms-empty:{sd_ds.forms.empty}")
         if not sd_ds.forms.empty:
             try:
                 from charts import sd_charts as SDC
                 charts.append(Div(H3("Forms Monthly Trend"), NotStr(SDC.forms_trend(sd_ds.forms)), cls="panel"))
-                debug.append("SD-forms:OK")
-            except Exception as e:
-                debug.append(f"SD-forms:ERR({e})")
-        else:
-            debug.append("SD-forms:SKIP(empty)")
-    else:
-        debug.append("SD-forms:SKIP(no-ds)")
+            except Exception:
+                pass
 
     if charts:
         parts.append(Div(*charts, cls="grid two"))
-    # Debug line (hidden by default, visible with ?debug=1)
-    parts.append(Div(" | ".join(debug), style="font-size:11px;color:#94a3b8;margin-top:12px;padding:8px;background:#fff;border:1px solid var(--line);border-radius:8px;",
-                      id="debug-log"))
     return tuple(parts)
 
 

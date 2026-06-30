@@ -9,6 +9,7 @@ interaction.
 from __future__ import annotations
 
 import itertools
+import random
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -17,7 +18,7 @@ ACCENT = "#2563eb"
 SEQ = ["#2563eb", "#0e7490", "#7c3aed", "#16a34a", "#ea580c", "#db2777", "#0891b2", "#64748b"]
 
 _PLOT_CONFIG = {"displayModeBar": False, "displaylogo": False, "responsive": True}
-_ids = itertools.count()
+_ids = iter(lambda: f'chart-{random.randrange(10_000_000, 99_999_999)}', None)
 
 
 def _rgba(hex_color: str, alpha: float) -> str:

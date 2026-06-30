@@ -1141,29 +1141,38 @@ async def login(req):
 
 @rt("/_sd_forms")
 async def sd_forms(req):
-    """Return an HTML table of forms for a given month."""
+    """Return forms table for a month. Replaces the chart panel."""
     month = req.query_params.get("month", "")
     ds = _cached("sd", load_sd)
     if not ds or ds.forms.empty or not month:
         return Div("")
     try:
-        # month format: "2026-05"
         forms = ds.forms.copy()
         forms_dates = forms["CreatedOn"] if "CreatedOn" in forms.columns else forms.get("createdOn", pd.Series())
         mask = forms_dates.dt.strftime("%Y-%m") == month
         matching = forms[mask].sort_values("CreatedOn" if "CreatedOn" in forms.columns else "createdOn", ascending=False).head(30)
         if matching.empty:
-            return Div(P("No forms for " + month, cls="note"))
+            return Div(H3("Forms in " + month, style="margin:0 0 8px;font-size:14px;"),
+                       P("No forms for " + month, cls="note"),
+                       A("← Back", href="#", cls="preset",
+                         hx_get="/view?platform=sd&section=hse", hx_target="#content"),
+                       cls="panel", id="sd-forms-chart")
         rows = []
         for _, r in matching.iterrows():
-            name = r.get("DocumentTemplateName", r.get("Label", ""))[:40]
+            name = r.get("DocumentTemplateName", r.get("Label", ""))[:45]
             created = str(r.get("CreatedOn", ""))[:10] if hasattr(r.get("CreatedOn"), "strftime") else str(r.get("createdOn", ""))[:10]
-            by = r.get("CreatedBy", r.get("createdBy", ""))
-            rows.append(f"<tr><td>{name}</td><td>{created}</td><td>{by}</td></tr>")
+            by_ = r.get("CreatedBy", r.get("createdBy", ""))[:20]
+            rows.append(f"<tr><td>{name}</td><td>{created}</td><td>{by_}</td></tr>")
         h = "<tr><th>Form</th><th>Date</th><th>Created By</th></tr>"
-        return Div(H4("Forms in " + month, style="margin:12px 0 8px;font-size:13px;"),
-                   Div("<table class='data'><thead>" + h + "</thead><tbody>" + "".join(rows) + "</tbody></table>",
-                       cls="tbl-wrap"))
+        back = A("← Back to chart", cls="preset",
+                 hx_get="/view?platform=sd&section=hse", hx_target="#content")
+        return Div(
+            H3("Forms in " + month, style="margin:0 0 8px;font-size:14px;"),
+            Div("<table class='data'><thead>" + h + "</thead><tbody>" + "".join(rows) + "</tbody></table>",
+                cls="tbl-wrap"),
+            back,
+            cls="panel", id="sd-forms-chart",
+        )
     except Exception:
         return Div("")
 

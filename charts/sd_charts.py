@@ -216,9 +216,9 @@ def forms_trend(forms: pd.DataFrame) -> str:
     click_js += 'var el=document.getElementById("' + div_id + '");'
     click_js += 'if(el){el.on("plotly_click",function(d){'
     click_js += 'var m=d.points[0].customdata; if(m&&typeof htmx!="undefined"){'
-    click_js += 'htmx.ajax("GET","/_sd_forms?month="+m,{target:"#sd-forms-list",swap:"innerHTML"});'
+    click_js += 'htmx.ajax("GET","/_sd_forms?month="+m,{target:"#sd-forms-chart",swap:"outerHTML"});'
     click_js += '}});}</script>'
-    return html + click_js
+    return '<div id="sd-forms-chart">' + html + click_js + '</div>'
 
 def schedule_compliance(sched: pd.DataFrame) -> str:
     """Stacked bar: status breakdown for schedules."""

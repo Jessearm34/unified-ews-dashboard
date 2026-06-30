@@ -106,7 +106,11 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
 .preset.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* KPI cards */
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.kpi-group { margin-bottom: 6px; }
+.kpi-group-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
+                   color: var(--muted); margin: 0 0 6px 2px; display: flex; align-items: center; gap: 6px; }
+.kpi-group-title .line { flex:1; height:1px; background: var(--line); }
 .kpi { background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 12px 14px;
        text-decoration: none; color: inherit; transition: box-shadow .15s; }
 .kpi:hover { box-shadow: 0 4px 12px rgba(15,23,42,.06); }
@@ -471,7 +475,17 @@ def render_overview():
 
     all_kpis = (*qb_kpis, *sd_kpis, *gt_kpis)
     if all_kpis:
-        parts.append(kpi_grid(all_kpis))
+        groups = []
+        if qb_kpis:
+            groups.append(Div(Div(NotStr("QuickBooks"), Div(cls="line"), cls="kpi-group-title"),
+                              Div(*qb_kpis, cls="kpis"), cls="kpi-group"))
+        if sd_kpis:
+            groups.append(Div(Div(NotStr("SiteDocs"), Div(cls="line"), cls="kpi-group-title"),
+                              Div(*sd_kpis, cls="kpis"), cls="kpi-group"))
+        if gt_kpis:
+            groups.append(Div(Div(NotStr("GeoTab"), Div(cls="line"), cls="kpi-group-title"),
+                              Div(*gt_kpis, cls="kpis"), cls="kpi-group"))
+        parts.append(Div(*groups))
 
     # ── Charts: 2×2 grid ──
     charts = []

@@ -609,7 +609,7 @@ def _chart(label, fn, *args, **kw):
         return ""
 
 
-def render_qb_section(section_key, basis="accrual", range_key="all"):
+def render_qb_section(section_key, basis="accrual", range_key="all", metric="revenue"):
     """Render a QuickBooks sub-tab."""
     ds = _cached("qb", load_qb)
     if not ds:
@@ -627,7 +627,7 @@ def render_qb_section(section_key, basis="accrual", range_key="all"):
             active = "active" if basis.lower() == key else ""
             btns.append(
                 Button(label, cls=f"preset {active}",
-                       hx_get=f"/view?platform=qb&section={section_key}&basis={key}&range={range_key}",
+                       hx_get=f"/view?platform=qb&section={section_key}&basis={key}&metric={metric}&range={range_key}",
                        hx_target="#content", hx_indicator="#loading")
             )
         return Div(Span("Basis:", cls="lbl"), *btns,
@@ -781,6 +781,52 @@ def render_qb_section(section_key, basis="accrual", range_key="all"):
         )
 
     return Div(H2("QuickBooks"), Div("Section not found.", cls="chart-empty"))
+
+
+
+def invoice_table(invoices):
+    """HTML table of invoices sorted by date descending."""
+    if invoices.empty:
+        return ""
+    top = invoices.sort_values("TxnDate", ascending=False).head(30)
+    rows = []
+    for _, r in top.iterrows():
+        bal = r.get("RevenueBalance", 0)
+        if bal <= 0:
+            badge = "<span class='badge green'>Paid</span>"
+        elif r.get("Overdue", False):
+            badge = "<span class='badge red'>Overdue</span>"
+        else:
+            badge = "<span class='badge'>Open</span>"
+        txn = str(r.get("TxnDate", ""))[:10] if hasattr(r.get("TxnDate"), "strftime") else ""
+        rows.append(f"<tr><td>{r.get('DocNumber','')}</td><td>{txn}</td>"
+                    f"<td>{r.get('CustomerName','')[:20]}</td>"
+                    f"<td class='num'>${r.get('Revenue',0):,.0f}</td>"
+                    f"<td>{badge}</td></tr>")
+    h = "<tr><th>Doc#</th><th>Date</th><th>Customer</th><th class='num'>Revenue</th><th>Status</th></tr>"
+    return f"<div class='tbl-wrap'><table class='data'><thead>{h}</thead><tbody>{''.join(rows)}</tbody></table></div>"
+
+
+def customer_table(ds, invoices):
+    """HTML table of customers sorted by billed amount."""
+    if ds.customers.empty:
+        return ""
+    cust_billed = invoices.groupby("CustomerName")["Revenue"].sum().reset_index() if not invoices.empty else pd.DataFrame()
+    if cust_billed.empty:
+        return ""
+    merged = ds.customers.merge(cust_billed, on="CustomerName", how="left")
+    merged = merged.dropna(subset=["Revenue"]).sort_values("Revenue", ascending=False).head(20)
+    rows = []
+    for _, r in merged.iterrows():
+        active = "<span class='badge green'>Active</span>" if r.get("Active") else "<span class='badge'>Inactive</span>"
+        rows.append(f"<tr><td>{r.get('CustomerName','')[:25]}</td>"
+                    f"<td>{r.get('City','')[:15]}</td>"
+                    f"<td class='num'>${r.get('Revenue',0):,.0f}</td>"
+                    f"<td class='num'>${r.get('Balance',0):,.0f}</td>"
+                    f"<td>{active}</td></tr>")
+    h = "<tr><th>Customer</th><th>City</th><th class='num'>Billed</th><th class='num'>Balance</th><th>Status</th></tr>"
+    return f"<div class='tbl-wrap'><table class='data'><thead>{h}</thead><tbody>{''.join(rows)}</tbody></table></div>"
+
 
 
 def render_sd_section(section_key):
@@ -1069,7 +1115,7 @@ async def index(req):
         content = render_overview()
         title = "Overview"
     elif platform == "qb":
-        content = render_qb_section(section or "overview", basis, range_key)
+        content = render_qb_section(section or "overview", basis, range_key, req.query_params.get("metric", "revenue"))
         title = f"QuickBooks - {section.title()}"
     elif platform == "sd":
         content = render_sd_section(section or "hse")
@@ -1098,7 +1144,7 @@ async def view_section(req):
         return tuple(render_overview())
 
     if platform == "qb":
-        return tuple(render_qb_section(section, basis, range_key))
+        return tuple(render_qb_section(section, basis, range_key, req.query_params.get("metric", "revenue")))
 
     if platform == "sd":
         return tuple(render_sd_section(section))

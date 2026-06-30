@@ -370,7 +370,7 @@ def gt_vehicle_utilization(
             Driver.name,
             func.count(Trip.id).label("trip_count"),
         )
-        .join(Driver, Trip.driver_id == Driver.id)
+        .join(Driver, Trip.driver_id == Driver.id, isouter=True)
         .where(Trip.start_time.between(since, until))
         .group_by(Trip.vehicle_id, Driver.name)
         .order_by(asc("vehicle_id"), desc("trip_count"))
@@ -378,7 +378,7 @@ def gt_vehicle_utilization(
     veh_driver = {}
     for dr in driver_rows:
         vid = dr["vehicle_id"]
-        if vid not in veh_driver:
+        if vid not in veh_driver and dr.get("name"):
             veh_driver[vid] = dr["name"]
 
     return [

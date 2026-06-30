@@ -53,7 +53,7 @@ def qb_read_table(table: str) -> pd.DataFrame:
 # Global cache to prevent re-processing all data on every HTMX request.
 _DATASET_CACHE: QbDataset | None = None
 _CACHE_TIMESTAMP: float = 0
-_CACHE_TTL = 300  # 5 minutes
+_CACHE_TTL = 600  # 5 minutes
 
 
 def safe_literal_eval(value: object) -> Any:

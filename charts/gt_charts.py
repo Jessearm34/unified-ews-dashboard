@@ -252,7 +252,7 @@ def idle_time_chart(data: dict) -> str:
 
 
 def fleet_map(data: dict) -> str:
-    """Scattergeo map of latest locations from ``data["locations"]``."""
+    """Simplified vehicle location map."""
     locs = data.get("locations", [])
     if not locs:
         return empty("No GPS location data")
@@ -266,7 +266,7 @@ def fleet_map(data: dict) -> str:
             lat=[l["latitude"] for l in moving],
             lon=[l["longitude"] for l in moving],
             mode="markers",
-            marker=dict(size=8, color="#16a34a"),
+            marker=dict(size=7, color="#16a34a", line=dict(width=0.5, color="#fff")),
             text=[l["vehicle"] for l in moving],
             name="Moving",
             hovertemplate="%{text}<extra></extra>",
@@ -276,16 +276,24 @@ def fleet_map(data: dict) -> str:
             lat=[l["latitude"] for l in stopped],
             lon=[l["longitude"] for l in stopped],
             mode="markers",
-            marker=dict(size=6, color="#94a3b8"),
+            marker=dict(size=5, color="#94a3b8", line=dict(width=0.5, color="#fff")),
             text=[l["vehicle"] for l in stopped],
             name="Stopped",
             hovertemplate="%{text}<extra></extra>",
         ))
     fig.update_layout(
         showlegend=True,
-        legend=dict(orientation="h", y=1.1),
-        geo=dict(projection_type="natural earth"),
-        height=420,
-        margin=dict(l=10, r=10, t=10, b=10),
+        legend=dict(orientation="h", y=1.05, x=0),
+        geo=dict(
+            projection_type="equirectangular",
+            showland=True,
+            landcolor="#f1f5f9",
+            coastlinecolor="#cbd5e1",
+            showocean=True,
+            oceancolor="#eef2f7",
+        ),
+        height=380,
+        margin=dict(l=10, r=10, t=30, b=10),
     )
+    fig.update_geos(lataxis_range=[25, 50], lonaxis_range=[-130, -70])
     return render(fig)

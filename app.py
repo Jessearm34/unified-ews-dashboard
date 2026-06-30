@@ -88,7 +88,7 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
 .sidebar .foot { margin-top: auto; font-size: 11px; color: #64788f; padding: 8px; }
 
 /* Main content */
-.main { flex: 1; min-width: 0; padding: 22px 26px 40px; }
+.main { flex: 1; min-width: 0; padding: 22px 26px 40px; padding-bottom: 60px; }
 .header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
 .header h1 { margin: 0; font-size: 26px; font-weight: 800; }
 .header .crumbs { color: var(--muted); font-size: 13px; margin-top: 4px; }
@@ -413,9 +413,9 @@ def render_overview():
     parts = []
 
     # ── Load data from all three platforms ──
-    qb_ds = qb_safe_load()
-    sd_ds = sd_safe_load()
-    gt_conn = gt_safe_connect()
+    qb_ds = _cached("qb", load_qb)
+    sd_ds = _cached("sd", load_sd)
+    gt_conn = _cached("gt", load_gt)
 
     # ── Top KPI row: 4 per platform ──
     qb_kpis = []
@@ -546,9 +546,29 @@ def render_overview():
     return tuple(parts)
 
 
-# ── Safe data loaders ─────────────────────────────────────────────────────
+# ── Safe data loaders with app-level cache ────────────────────────────────
 
-def qb_safe_load():
+_data_cache = {}
+_cache_ts = {}
+_CACHE_DURATION = 600  # 10 minutes
+
+
+def _cached(key, loader):
+    """Load data once and cache for _CACHE_DURATION seconds."""
+    now = time.time()
+    if key in _data_cache and (now - _cache_ts.get(key, 0) < _CACHE_DURATION):
+        return _data_cache[key]
+    try:
+        val = loader()
+        if val is not None:
+            _data_cache[key] = val
+            _cache_ts[key] = now
+        return val
+    except Exception:
+        return None
+
+
+def load_qb():
     try:
         ds = QB.qb_load_dataset()
         if ds and not ds.invoices.empty:
@@ -558,7 +578,7 @@ def qb_safe_load():
     return None
 
 
-def sd_safe_load():
+def load_sd():
     try:
         ds = SD.sd_load_dataset()
         if ds and ds.has_data:
@@ -568,7 +588,7 @@ def sd_safe_load():
     return None
 
 
-def gt_safe_connect():
+def load_gt():
     try:
         return next(GT.get_db())
     except Exception:
@@ -579,7 +599,7 @@ def gt_safe_connect():
 
 def render_qb_section(section_key, basis="accrual", range_key="all"):
     """Render a QuickBooks sub-tab."""
-    ds = qb_safe_load()
+    ds = _cached("qb", load_qb)
     if not ds:
         return Div(H2("QuickBooks"), Div("No data available.", cls="chart-empty"), cls="mt")
 
@@ -753,7 +773,7 @@ def render_qb_section(section_key, basis="accrual", range_key="all"):
 
 def render_sd_section(section_key):
     """Render a SiteDocs sub-tab."""
-    ds = sd_safe_load()
+    ds = _cached("sd", load_sd)
     if not ds:
         return Div(H2("SiteDocs"), Div("No data available.", cls="chart-empty"), cls="mt")
 
@@ -959,7 +979,7 @@ def render_sd_section(section_key):
 
 def render_gt_section(section_key):
     """Render a GeoTab sub-tab."""
-    conn = gt_safe_connect()
+    conn = _cached("gt", load_gt)
     if not conn:
         return Div(H2("GeoTab Fleet"), Div("No data available.", cls="chart-empty"), cls="mt")
 
@@ -1170,6 +1190,14 @@ async def view_section(req):
 
 
 # ── Entry point ───────────────────────────────────────────────────────────
+
+# Preload data on startup so first user doesn't wait
+import threading as _threading
+def _preload():
+    time.sleep(1)  # Let server start first
+    _cached("qb", load_qb)
+    _cached("sd", load_sd)
+_threading.Thread(target=_preload, daemon=True).start()
 
 if __name__ == "__main__":
     import uvicorn

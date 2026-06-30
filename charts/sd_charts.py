@@ -213,9 +213,11 @@ def forms_trend(forms: pd.DataFrame) -> str:
     html = render(_layout(fig, 300))
     div_id = html.split('id="')[1].split('"')[0] if 'id="' in html else "plot-0"
     click_js = '<script>'
-    click_js += 'document.querySelector("#' + div_id + '").on("plotly_click", function(data){'
-    click_js += 'var m = data.points[0].customdata; if(m){ htmx.ajax("GET","/_sd_forms?month="+m,{target:"#sd-forms-list",swap:"innerHTML"}); }'
-    click_js += '});</script>'
+    click_js += 'var el=document.getElementById("' + div_id + '");'
+    click_js += 'if(el){el.on("plotly_click",function(d){'
+    click_js += 'var m=d.points[0].customdata; if(m&&typeof htmx!="undefined"){'
+    click_js += 'htmx.ajax("GET","/_sd_forms?month="+m,{target:"#sd-forms-list",swap:"innerHTML"});'
+    click_js += '}});}</script>'
     return html + click_js
 
 def schedule_compliance(sched: pd.DataFrame) -> str:

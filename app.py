@@ -1234,6 +1234,71 @@ async def gt_check(req):
         return Pre(f"Error: {e}\\n{traceback.format_exc()}")
 
 
+@rt("/_gt_sync_now")
+async def gt_sync_now(req):
+    """One-shot: sync all Geotab users into drivers table."""
+    from sqlalchemy import text
+    import requests
+    try:
+        # Get Geotab credentials
+        gt_db = os.getenv("GEOTAB_DATABASE")
+        gt_user = os.getenv("GEOTAB_USERNAME")
+        gt_pass = os.getenv("GEOTAB_PASSWORD")
+        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
+        
+        if not all([gt_db, gt_user, gt_pass]):
+            return Pre("ERROR: GEOTAB_DATABASE, GEOTAB_USERNAME, GEOTAB_PASSWORD must be set as env vars")
+        
+        # Authenticate with Geotab API
+        base = f"https://{gt_server}/apiv1"
+        auth_resp = requests.post(base, json={
+            "method": "Authenticate",
+            "params": {
+                "database": gt_db,
+                "userName": gt_user,
+                "password": gt_pass,
+            }
+        }, timeout=30)
+        auth_data = auth_resp.json()
+        if "error" in auth_data:
+            return Pre(f"Geotab API auth error: {auth_data['error']}")
+        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
+        
+        # Fetch all Users
+        get_resp = requests.post(base, json={
+            "method": "Get",
+            "params": {
+                "typeName": "User",
+                "credentials": creds,
+                "resultsLimit": 50000,
+            }
+        }, timeout=60)
+        get_data = get_resp.json()
+        users = get_data.get("result", []) if isinstance(get_data.get("result"), list) else []
+        
+        # Insert into drivers table
+        db = load_gt()
+        inserted = 0
+        for u in users:
+            uid = str(u.get("id", ""))
+            first = u.get("firstName", "")
+            last = u.get("lastName", "")
+            name = u.get("name") or f"{first} {last}".strip() or uid
+            emp = u.get("employeeNo") or u.get("employeeId") or ""
+            db.execute(text(
+                "INSERT INTO drivers (geotab_id, name, employee_id, created_at, updated_at) "
+                "VALUES (:gid, :name, :emp, NOW(), NOW()) "
+                "ON CONFLICT (geotab_id) DO UPDATE SET name=:name2, employee_id=:emp2, updated_at=NOW()"
+            ), {"gid": uid, "name": name, "emp": emp, "name2": name, "emp2": emp})
+            inserted += 1
+        db.commit()
+        db.close()
+        return Pre(f"Synced {inserted} users into drivers table.")
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\n{traceback.format_exc()}")
+
+
 @rt("/_gt_sync_logs")
 async def gt_sync_logs(req):
     """Show sync log entries from the GT database."""

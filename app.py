@@ -1234,6 +1234,30 @@ async def gt_check(req):
         return Pre(f"Error: {e}\\n{traceback.format_exc()}")
 
 
+@rt("/_gt_sync_logs")
+async def gt_sync_logs(req):
+    """Show sync log entries from the GT database."""
+    from sqlalchemy import text
+    try:
+        db = load_gt()
+        out = []
+        r = db.execute(text("SELECT entity_name, status, records_processed, started_at, finished_at, message FROM sync_logs ORDER BY started_at DESC LIMIT 20"))
+        out.append("Last 20 sync attempts:")
+        for row in r:
+            msg = (row.message or "")[:80]
+            out.append(f"  {row.entity_name:12s} {row.status:8s} {str(row.records_processed or 0):5s} records  {str(row.started_at)[:19]}  {msg}")
+        r = db.execute(text("SELECT entity_name, last_sync_timestamp FROM sync_metadata ORDER BY entity_name"))
+        out.append("\nSync watermarks:")
+        for row in r:
+            out.append(f"  {row.entity_name:12s} last: {str(row.last_sync_timestamp)[:19]}")
+        db.close()
+        return Pre("\n".join(out))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}")
+
+
+
 @rt("/_sd_forms")
 async def sd_forms(req):
     """Return forms table for a month. Replaces the chart panel."""

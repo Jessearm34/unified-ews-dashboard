@@ -791,15 +791,15 @@ def render_sd_section(section_key):
             H2("HSE Overview"),
             kpi_grid(cards),
             Div(
-                Div(H3("Schedule Compliance"), NotStr(SDC.schedule_compliance(ds.schedules)), cls="panel"),
-                Div(H3("Forms by Category"), NotStr(SDC.form_category_chart(ds.forms)), cls="panel"),
+                _chart("Schedule Compliance", SDC.schedule_compliance, ds.schedules),
+                _chart("Forms by Category", SDC.form_category_chart, ds.forms),
                 cls="grid two"),
             Div(
-                Div(H3("Monthly Trend"), NotStr(SDC.forms_trend(ds.forms)), cls="panel"),
-                Div(H3("Worker Activity"), NotStr(SDC.worker_leaderboard_table(ds.workers, ds.forms, ds.signatures, ds.schedules)), cls="panel"),
+                _chart("Monthly Trend", SDC.forms_trend, ds.forms),
+                _chart("Worker Activity", SDC.worker_leaderboard_table, ds.workers, ds.forms, ds.signatures, ds.schedules),
                 cls="grid two mt"),
             Div(
-                Div(H3("Overdue Items"), NotStr(SDC.overdue_items_list(ds.schedules)), cls="panel"),
+                _chart("Overdue Items", SDC.overdue_items_list, ds.schedules),
                 cls="mt"),
         )
 
@@ -837,11 +837,11 @@ def render_sd_section(section_key):
             H2("Compliance"),
             kpi_grid(cards),
             Div(
-                Div(H3("Schedule Compliance"), NotStr(SDC.schedule_compliance(ds.schedules)), cls="panel"),
-                Div(H3("Forms Trend"), NotStr(SDC.forms_trend(ds.forms)), cls="panel"),
+                _chart("Schedule Compliance", SDC.schedule_compliance, ds.schedules),
+                _chart("Forms Trend", SDC.forms_trend, ds.forms),
                 cls="grid two"),
             Div(
-                Div(H3("Overdue & Late Items"), NotStr(SDC.overdue_items_list(ds.schedules)), cls="panel"),
+                _chart("Overdue & Late Items", SDC.overdue_items_list, ds.schedules),
                 cls="mt"),
         )
 
@@ -862,11 +862,11 @@ def render_sd_section(section_key):
             H2("Workers"),
             kpi_grid(cards),
             Div(
-                Div(H3("Active vs Inactive"), NotStr(SDC.worker_status(ds.workers)), cls="panel"),
-                Div(H3("Employee vs Contractor"), NotStr(SDC.worker_type_split(ds.workers)), cls="panel"),
+                _chart("Active vs Inactive", SDC.worker_status, ds.workers),
+                _chart("Employee vs Contractor", SDC.worker_type_split, ds.workers),
                 cls="grid two"),
             Div(
-                Div(H3("Worker Activity"), NotStr(SDC.worker_leaderboard_table(ds.workers, ds.forms, ds.signatures, ds.schedules)), cls="panel"),
+                _chart("Worker Activity", SDC.worker_leaderboard_table, ds.workers, ds.forms, ds.signatures, ds.schedules),
                 cls="mt"),
         )
 
@@ -920,22 +920,19 @@ def render_gt_section(section_key):
             H2("GeoTab Fleet Overview"),
             NotStr(kpis_html),
             Div(
-                Div(H3("Daily Mileage Trend"), NotStr(GTC.daily_mileage_chart(gt_data)), cls="panel"),
-                Div(H3("Daily Trip Count"), NotStr(GTC.trip_count_chart(gt_data)), cls="panel"),
+                _chart("Daily Mileage Trend", GTC.daily_mileage_chart, gt_data),
+                _chart("Daily Trip Count", GTC.trip_count_chart, gt_data),
                 cls="grid two"),
             Div(
-                Div(H3("Vehicle Utilization"), NotStr(GTC.vehicle_utilization_chart(gt_data)), cls="panel"),
-                Div(
-                    H3("Vehicle Details"),
-                    Div(NotStr(GTC.vehicle_table(gt_data)), cls="panel-scroll"),
-                    cls="panel"),
+                _chart("Vehicle Utilization", GTC.vehicle_utilization_chart, gt_data),
+                _chart("Vehicle Details", GTC.vehicle_table, gt_data),
                 cls="grid two mt"),
             Div(
-                Div(H3("Speed Distribution"), NotStr(GTC.speed_distribution_chart(gt_data)), cls="panel"),
-                Div(H3("Idle Time by Vehicle"), NotStr(GTC.idle_time_chart(gt_data)), cls="panel"),
+                _chart("Speed Distribution", GTC.speed_distribution_chart, gt_data),
+                _chart("Idle Time by Vehicle", GTC.idle_time_chart, gt_data),
                 cls="grid two mt"),
             Div(
-                Div(H3("Fleet Locations"), NotStr(GTC.fleet_map(gt_data)), cls="panel"),
+                _chart("Fleet Locations", GTC.fleet_map, gt_data),
                 cls="mt"),
         )
     except Exception as e:

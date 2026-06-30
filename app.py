@@ -1161,6 +1161,79 @@ async def login(req):
     )
 
 
+@rt("/_gt_check")
+async def gt_check(req):
+    """Diagnostic: show GT vehicle-driver relationships from the actual data."""
+    from sqlalchemy import text
+    try:
+        db = load_gt()
+        out = []
+        
+        # Check trips with/without driver_id
+        r = db.execute(text("SELECT COUNT(*) as total, COUNT(driver_id) as with_driver, COUNT(*) - COUNT(driver_id) as no_driver FROM trips"))
+        row = r.one()
+        out.append(f"Trips: {row.total} total, {row.with_driver} with driver, {row.no_driver} without driver")
+        
+        # Sample trips with driver info
+        r = db.execute(text("""
+            SELECT t.id, t.vehicle_id, t.driver_id, d.name as driver_name,
+                   v.license_plate, v.vin
+            FROM trips t
+            LEFT JOIN drivers d ON d.id = t.driver_id
+            LEFT JOIN vehicles v ON v.id = t.vehicle_id
+            WHERE t.driver_id IS NOT NULL
+            LIMIT 10
+        """))
+        out.append("\n\nTrips WITH driver (sample 10):")
+        for row in r:
+            out.append(f"  Trip {row.id}: vehicle={row.vehicle_id} ({row.license_plate or row.vin}), driver={row.driver_id} ({row.driver_name or '?'})")
+        
+        # Top vehicles by driver count (vehicles with most distinct drivers)
+        r = db.execute(text("""
+            SELECT v.id, v.license_plate, v.vin,
+                   COUNT(DISTINCT t.driver_id) as num_drivers,
+                   COUNT(*) as trip_count
+            FROM trips t
+            JOIN vehicles v ON v.id = t.vehicle_id
+            WHERE t.driver_id IS NOT NULL
+            GROUP BY v.id
+            ORDER BY num_drivers DESC
+            LIMIT 10
+        """))
+        out.append("\n\nVehicles with most distinct drivers:")
+        for row in r:
+            out.append(f"  Vehicle {row.id}: {row.license_plate or row.vin} — {row.num_drivers} drivers, {row.trip_count} trips")
+        
+        # Check if any trips have driver_id = NULL
+        r = db.execute(text("""
+            SELECT COUNT(*) as null_count
+            FROM trips
+            WHERE driver_id IS NULL
+        """))
+        null_count = r.scalar()
+        out.append(f"\n\nTrips with NULL driver_id: {null_count}")
+        
+        # Check if drivers table has any records
+        r = db.execute(text("SELECT COUNT(*) FROM drivers"))
+        out.append(f"\nTotal drivers in DB: {r.scalar()}")
+        
+        # Check if vehicles table has any records
+        r = db.execute(text("SELECT COUNT(*) FROM vehicles"))
+        out.append(f"\nTotal vehicles in DB: {r.scalar()}")
+        
+        # Show all drivers
+        r = db.execute(text("SELECT id, name, geotab_id, employee_id FROM drivers LIMIT 20"))
+        out.append("\n\nAll drivers:")
+        for row in r:
+            out.append(f"  Driver {row.id}: {row.name} (geotab={row.geotab_id}, emp={row.employee_id})")
+        
+        db.close()
+        return Pre("\n".join(out))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
+
+
 @rt("/_sd_forms")
 async def sd_forms(req):
     """Return forms table for a month. Replaces the chart panel."""

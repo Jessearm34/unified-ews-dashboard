@@ -487,7 +487,7 @@ def render_overview():
                               Div(*gt_kpis, cls="kpis"), cls="kpi-group"))
         parts.append(Div(*groups))
 
-    # ── Charts: 2×2 grid ──
+    # ── Charts: 2×2 grid (only render if data exists) ──
     charts = []
 
     # 1. Monthly Revenue Trend (QB)
@@ -496,16 +496,18 @@ def render_overview():
             from charts import qb_charts as QBC
             inv = QB.filter_invoices(qb_ds.invoices, date(2020, 1, 1), date.today())
             if not inv.empty:
-                charts.append(_chart("Monthly Revenue Trend", QBC.trend, inv, "revenue"))
+                charts.append(Div(H3("Monthly Revenue Trend"), NotStr(QBC.trend(inv, "revenue")), cls="panel"))
         except Exception:
             pass
 
-    # 2. Schedule Compliance (SD)
-    if sd_ds:
-        from charts import sd_charts as SDC
-        charts.append(_chart("Schedule Compliance", SDC.schedule_compliance, sd_ds.schedules))
+    # 2. Schedule Compliance (SD) — only if schedules have data
+    if sd_ds and not sd_ds.schedules.empty:
+        sched_c = SD.schedule_counts(sd_ds.schedules)
+        if sched_c.get("total", 0) > 0:
+            from charts import sd_charts as SDC
+            charts.append(Div(H3("Schedule Compliance"), NotStr(SDC.schedule_compliance(sd_ds.schedules)), cls="panel"))
 
-    # 3. Fleet Daily Mileage (GT)
+    # 3. Fleet Daily Mileage (GT) — only if trends exist
     if gt_conn:
         from charts import gt_charts as GTC
         try:
@@ -516,24 +518,21 @@ def render_overview():
             vehicle_util = GT.gt_vehicle_utilization(db, since_365, datetime.now(timezone.utc))
             idling = GT.gt_idling_summary(db, since_365, datetime.now(timezone.utc))
             locations = GT.gt_latest_locations(db)
-            gt_data = {
-                "trends": trends, "speed": speed, "vehicle_util": vehicle_util,
-                "idling": idling, "locations": locations,
-            }
-            charts.append(_chart("Daily Mileage Trend", GTC.daily_mileage_chart, gt_data))
+            gt_data = {"trends": trends, "speed": speed, "vehicle_util": vehicle_util,
+                       "idling": idling, "locations": locations}
+            if trends:
+                charts.append(Div(H3("Daily Mileage Trend"), NotStr(GTC.daily_mileage_chart(gt_data)), cls="panel"))
             db.close()
         except Exception:
             pass
 
-    # 4. Forms Monthly Trend (SD)
-    if sd_ds:
+    # 4. Forms Monthly Trend (SD) — only if forms have data
+    if sd_ds and not sd_ds.forms.empty:
         from charts import sd_charts as SDC
-        charts.append(_chart("Forms Monthly Trend", SDC.forms_trend, sd_ds.forms))
+        charts.append(Div(H3("Forms Monthly Trend"), NotStr(SDC.forms_trend(sd_ds.forms)), cls="panel"))
 
-    # Only create the grid if there are charts
-    live_charts = [c for c in charts if c]
-    if live_charts:
-        parts.append(Div(*live_charts, cls="grid two"))
+    if charts:
+        parts.append(Div(*charts, cls="grid two"))
     return tuple(parts)
 
 

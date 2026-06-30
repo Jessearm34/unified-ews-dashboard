@@ -564,7 +564,7 @@ def render_overview(range_key="all"):
             vehicle_util = GT.gt_vehicle_utilization(db, since_365, datetime.now(timezone.utc))
             idling = GT.gt_idling_summary(db, since_365, datetime.now(timezone.utc))
             locations = GT.gt_latest_locations(db)
-            drivers = GT.gt_driver_metrics(db, since_365, now)
+            drivers = GT.gt_driver_metrics(db, since_365, datetime.now(timezone.utc))
             gt_data = {"trends": trends, "speed": speed, "vehicle_util": vehicle_util,
                        "idling": idling, "locations": locations, "drivers": drivers}
             if trends:

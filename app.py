@@ -575,12 +575,12 @@ def render_overview(range_key="all"):
                 charts.append(Div(H3("Forms Monthly Trend"), NotStr(SDC.forms_trend(sd_ds.forms)), cls="panel"))
             except Exception:
                 pass
-    ov_sd_forms = Div(id="sd-forms-list") if sd_ds and not sd_ds.forms.empty else ""
 
     if charts:
         parts.append(Div(*charts, cls="grid two"))
+    if sd_ds and not sd_ds.forms.empty:
+        parts.append(Div(id="sd-forms-list"))
     return tuple(parts)
-
 
 # ── Safe data loaders with app-level cache ────────────────────────────────
 

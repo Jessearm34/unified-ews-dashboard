@@ -27,8 +27,14 @@ from data import gt_data as GT
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-2.35.2.min.js"
 
 # Date range presets
-def resolve_date_range(range_key):
-    end = date.today()
+def resolve_date_range(range_key, end_date=None):
+    """Return (start, end) where end is the last completed month."""
+    if end_date is None:
+        end_date = date.today()
+    # End of last completed month = 1st of current month - 1 day
+    end = date(end_date.year, end_date.month, 1) - timedelta(days=1)
+    if end < date(2020, 1, 1):
+        end = end_date  # fallback if something weird
     if range_key == "ytd":
         return date(end.year, 1, 1), end
     if range_key == "30d":
@@ -36,7 +42,10 @@ def resolve_date_range(range_key):
     if range_key == "90d":
         return end - timedelta(days=90), end
     if range_key == "12m":
-        return end - timedelta(days=365), end
+        s = date(end.year - 1, end.month, 1)
+        if s.day > end.day:
+            s = s - timedelta(days=s.day - end.day)
+        return s, end
     return date(2020, 1, 1), end
 
 RANGE_PRESETS = [("all","All"), ("ytd","YTD"), ("30d","30d"), ("90d","90d"), ("12m","12m")]
@@ -118,6 +127,9 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
 .kpi .k-label .k-platform { font-size:8px; background:#e2e8f0; color:#475569; padding:0 4px; border-radius:2px; font-weight:700; }
 .kpi .k-value { font-size: 16px; font-weight: 800; margin: 1px 0 0; line-height: 1.2; }
 .kpi .k-hint { color:#94a3b8; font-size: 9px; margin-top:0; }
+.kpi .k-delta { font-size: 9px; font-weight: 600; margin-left: 2px; }
+.kpi .k-delta.up { color: var(--good); }
+.kpi .k-delta.down { color: var(--bad); }
 .kpi .k-badge { display: inline-block; font-size: 9px; font-weight: 700; padding: 0 5px;
                 border-radius: 999px; margin-left: 3px; }
 .kpi .k-badge.green { background:#dcfce7; color:#15803d; }
@@ -311,10 +323,8 @@ def sidebar(active_platform=None, active_section="overview"):
 
 # ── KPI helpers ───────────────────────────────────────────────────────────
 
-def kpi_card(label, value, unit="", hint="", rag=None, platform=""):
-    """Render a single KPI card.
-    rag: 'green', 'amber', 'red', or None.
-    """
+def kpi_card(label, value, unit="", hint="", rag=None, platform="", delta=None, delta_up_good=True):
+    """Render a single KPI card with optional delta arrow."""
     fmt_val = value
     if isinstance(value, float):
         if unit == "$":
@@ -340,13 +350,21 @@ def kpi_card(label, value, unit="", hint="", rag=None, platform=""):
 
     rag_dot = ""
     if rag:
-        rag_dot = Span(cls=f"kpi-rag", style=f"background:{rag_color_css(rag)}")
-
+        rag_dot = Span(cls="kpi-rag", style=f"background:{rag_color_css(rag)}")
     platform_tag = Span(platform, cls="k-platform") if platform else ""
+
+    # Delta arrow
+    delta_el = ""
+    if delta is not None:
+        up = delta > 0
+        good = up if delta_up_good else not up
+        arrow = "▲" if up else "▼"
+        cls = "k-delta up" if good else "k-delta down"
+        delta_el = Span(f" {arrow} {abs(delta):.1f}%", cls=cls)
 
     return Div(
         Div(rag_dot, label, platform_tag, cls="k-label"),
-        Div(fmt_val, cls="k-value"),
+        Div(fmt_val, delta_el, cls="k-value"),
         Div(hint, cls="k-hint") if hint else "",
         cls="kpi",
     )
@@ -407,9 +425,28 @@ def shell(content, active_platform=None, active_section="overview", title=""):
 
 # ── Overview (cross-platform) ─────────────────────────────────────────────
 
-def render_overview():
+def render_overview(range_key="all"):
     """Top KPIs and charts from all three platforms."""
     parts = []
+    start, end = resolve_date_range(range_key)
+
+    # ── Range buttons for Overview ──
+    def ov_range_buttons():
+        btns = []
+        for rk, rl in RANGE_PRESETS:
+            active = "active" if range_key == rk else ""
+            if rk == "custom":
+                btns.append(Button(rl, cls=f"preset {active}",
+                    onclick="document.getElementById('ov-custom-range').style.display='flex'"))
+            else:
+                btns.append(Button(rl, cls=f"preset {active}",
+                    hx_get=f"/view?platform=overview&range={rk}", hx_target="#content"))
+        custom = Div(Input(type="date", id="ov-start"), Input(type="date", id="ov-end"),
+            Button("Apply", cls="preset active",
+                hx_get="/view?platform=overview&range=custom",
+                hx_include="#ov-start,#ov-end", hx_target="#content"),
+            id="ov-custom-range", style="display:none;gap:6px;align-items:center;")
+        return Div(Span("Range:", cls="lbl"), *btns, custom, cls="controls")
 
     # ── Load data from all three platforms ──
     qb_ds = _cached("qb", load_qb)
@@ -421,7 +458,7 @@ def render_overview():
     if qb_ds:
         invoices = QB.filter_invoices(qb_ds.invoices, date(2020, 1, 1), date.today())
         bs = QB.balance_sheet_summary(qb_ds.accounts)
-        pnl = QB.pnl_summary(qb_ds.pnl, "accrual", date(2020, 1, 1), date.today())
+        pnl = QB.pnl_summary(qb_ds.pnl, "accrual", start, end)
         revenue = pnl["income"] if not qb_ds.pnl.empty else (float(invoices["Revenue"].sum()) if not invoices.empty else 0.0)
         qb_kpis = [
             kpi_card("Revenue", revenue, "$", "", platform="QB"),
@@ -494,7 +531,7 @@ def render_overview():
     if qb_ds:
         try:
             from charts import qb_charts as QBC
-            inv = QB.filter_invoices(qb_ds.invoices, date(2020, 1, 1), date.today())
+            inv = QB.filter_invoices(qb_ds.invoices, start, end)
             if not inv.empty:
                 charts.append(Div(H3("Monthly Revenue Trend"), NotStr(QBC.trend(inv, "revenue")), cls="panel"))
         except Exception:
@@ -674,7 +711,7 @@ def render_qb_section(section_key, basis="accrual", range_key="all", metric="rev
     if section_key == "overview":
         kpis = QB.compute_kpis(ds, invoices, start, end)
         cards = [
-            kpi_card(k.label, k.value, k.unit, k.hint or "")
+            kpi_card(k.label, k.value, k.unit, k.hint or "", delta=k.delta, delta_up_good=k.delta_good_when_up)
             for k in [kpis["revenue"], kpis["cash"], kpis["outstanding"], kpis["overdue"],
                       kpis["dso"], kpis["active_customers"]]
         ]
@@ -694,7 +731,7 @@ def render_qb_section(section_key, basis="accrual", range_key="all", metric="rev
 
     elif section_key == "sales":
         kpis = QB.compute_kpis(ds, invoices, start, end)
-        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
+        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "", delta=k.delta, delta_up_good=k.delta_good_when_up)
                  for k in [kpis["revenue"], kpis["collected"], kpis["invoice_count"], kpis["avg_invoice"]]]
         items = QB.invoice_line_items(invoices)
         return (
@@ -713,7 +750,7 @@ def render_qb_section(section_key, basis="accrual", range_key="all", metric="rev
 
     elif section_key == "finance":
         kpis = QB.compute_kpis(ds, invoices, start, end)
-        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
+        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "", delta=k.delta, delta_up_good=k.delta_good_when_up)
                  for k in [kpis["cash"], kpis["outstanding"], kpis["dso"],
                            kpis["working_capital"], kpis["current_ratio"], kpis["total_liabilities"]]]
         return (
@@ -733,7 +770,7 @@ def render_qb_section(section_key, basis="accrual", range_key="all", metric="rev
     elif section_key == "profitability":
         pnl_sum = QB.pnl_summary(ds.pnl, basis, start, end)
         kpis = QB.pnl_kpis(ds, basis, start, end)
-        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
+        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "", delta=k.delta, delta_up_good=k.delta_good_when_up)
                  for k in [kpis["pnl_income"], kpis["pnl_cogs"], kpis["pnl_gross_profit"],
                            kpis["pnl_gross_margin"], kpis["pnl_net_income"], kpis["pnl_net_margin"]]]
         return (
@@ -753,7 +790,7 @@ def render_qb_section(section_key, basis="accrual", range_key="all", metric="rev
 
     elif section_key == "customers":
         kpis = QB.compute_kpis(ds, invoices, start, end)
-        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
+        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "", delta=k.delta, delta_up_good=k.delta_good_when_up)
                  for k in [kpis["active_customers"], kpis["total_customers"], kpis["outstanding"], kpis["overdue"]]]
         return (
             H2("Customers"),
@@ -766,7 +803,7 @@ def render_qb_section(section_key, basis="accrual", range_key="all", metric="rev
 
     elif section_key == "accounts":
         kpis = QB.compute_kpis(ds, invoices, start, end)
-        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "")
+        cards = [kpi_card(k.label, k.value, k.unit, k.hint or "", delta=k.delta, delta_up_good=k.delta_good_when_up)
                  for k in [kpis["total_assets"], kpis["total_liabilities"], kpis["equity"], kpis["cash"]]]
         return (
             H2("Accounts"),
@@ -1112,7 +1149,7 @@ async def index(req):
 
     # Load overview content on initial page load
     if not platform or platform == "overview":
-        content = render_overview()
+        content = render_overview(req.query_params.get("range", "12m"))
         title = "Overview"
     elif platform == "qb":
         content = render_qb_section(section or "overview", basis, range_key, req.query_params.get("metric", "revenue"))
@@ -1124,7 +1161,7 @@ async def index(req):
         content = render_gt_section(section or "fleet")
         title = "GeoTab Fleet"
     else:
-        content = render_overview()
+        content = render_overview(req.query_params.get("range", "12m"))
         title = "Overview"
 
     return shell(content, active_platform=platform, active_section=section or "overview", title=title)
@@ -1141,7 +1178,7 @@ async def view_section(req):
     range_key = req.query_params.get("range", "all")
 
     if platform == "overview":
-        return tuple(render_overview())
+        return tuple(render_overview(req.query_params.get("range", "12m")))
 
     if platform == "qb":
         return tuple(render_qb_section(section, basis, range_key, req.query_params.get("metric", "revenue")))

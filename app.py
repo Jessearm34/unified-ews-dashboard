@@ -564,8 +564,9 @@ def render_overview(range_key="all"):
             vehicle_util = GT.gt_vehicle_utilization(db, since_365, datetime.now(timezone.utc))
             idling = GT.gt_idling_summary(db, since_365, datetime.now(timezone.utc))
             locations = GT.gt_latest_locations(db)
+            drivers = GT.gt_driver_metrics(db, since_365, now)
             gt_data = {"trends": trends, "speed": speed, "vehicle_util": vehicle_util,
-                       "idling": idling, "locations": locations}
+                       "idling": idling, "locations": locations, "drivers": drivers}
             if trends:
                 charts.append(Div(H3("Daily Mileage Trend"), NotStr(GTC.daily_mileage_chart(gt_data)), cls="panel"))
             db.close()
@@ -650,6 +651,21 @@ def _chart(label, fn, *args, **kw):
         return Div(H3(label), NotStr(html), cls="panel")
     except Exception:
         return ""
+
+
+
+
+def _driver_table(drivers):
+    if not drivers:
+        return ""
+    rows = []
+    for d in drivers[:20]:
+        rows.append("<tr><td>" + str(d.get("name",""))[:25] + "</td>"
+                    + "<td class='num'>" + str(d.get("trip_count",0)) + "</td>"
+                    + "<td class='num'>" + "{:,.0f}".format(d.get("distance_driven",0)) + "</td>"
+                    + "<td class='num'>" + "{:,.0f}".format(d.get("average_trip_length",0)) + "</td></tr>")
+    h = "<tr><th>Driver</th><th class='num'>Trips</th><th class='num'>Distance (mi)</th><th class='num'>Avg Trip</th></tr>"
+    return "<table class='data'><thead>" + h + "</thead><tbody>" + "".join(rows) + "</tbody></table>"
 
 
 def render_qb_section(section_key, basis="accrual", range_key="all", metric="revenue"):
@@ -1042,6 +1058,10 @@ def render_gt_section(section_key):
             Div(
                 _chart("Fleet Locations", GTC.fleet_map, gt_data),
                 cls="mt"),
+            Div(
+                H3("Driver Activity"),
+                NotStr(_driver_table(gt_data.get("drivers", []))),
+                cls="panel mt") if gt_data.get("drivers") else "",
         )
     except Exception as e:
         if conn:
@@ -1158,11 +1178,20 @@ async def sd_forms(req):
                          hx_get="/view?platform=sd&section=hse", hx_target="#content"),
                        cls="panel", id="sd-forms-chart")
         rows = []
+        # Build worker lookup dict: worker UUID -> name
+        worker_map = {}
+        if not ds.workers.empty and "Id" in ds.workers.columns:
+            for _, w in ds.workers.iterrows():
+                wid = str(w.get("Id", ""))
+                fname = str(w.get("FirstName", ""))
+                lname = str(w.get("LastName", ""))
+                worker_map[wid] = f"{fname} {lname}".strip() or wid[:12]
         for _, r in matching.iterrows():
             name = r.get("DocumentTemplateName", r.get("Label", ""))[:45]
             created = str(r.get("CreatedOn", ""))[:10] if hasattr(r.get("CreatedOn"), "strftime") else str(r.get("createdOn", ""))[:10]
-            by_ = r.get("CreatedBy", r.get("createdBy", ""))[:20]
-            rows.append(f"<tr><td>{name}</td><td>{created}</td><td>{by_}</td></tr>")
+            by_uuid = str(r.get("CreatedBy", r.get("createdBy", "")))
+            by_name = worker_map.get(by_uuid, by_uuid[:12])
+            rows.append(f"<tr><td>{name}</td><td>{created}</td><td>{by_name}</td></tr>")
         h = "<tr><th>Form</th><th>Date</th><th>Created By</th></tr>"
         back = A("← Back to chart", cls="preset",
                  hx_get="/view?platform=sd&section=hse", hx_target="#content")

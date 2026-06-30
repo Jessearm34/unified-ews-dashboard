@@ -597,7 +597,9 @@ _CACHE_DURATION = 600  # 10 minutes
 
 
 def _cached(key, loader):
-    """Load data once and cache for _CACHE_DURATION seconds."""
+    """Load data once and cache for _CACHE_DURATION seconds. Skips cache for GT (DB sessions)."""
+    if key == "gt":
+        return load_gt()
     now = time.time()
     if key in _data_cache and (now - _cache_ts.get(key, 0) < _CACHE_DURATION):
         return _data_cache[key]

@@ -198,7 +198,7 @@ def vehicle_table(data: dict) -> str:
         return empty("No vehicle data")
 
     rows = "".join(
-        f"<tr><td>{u['label']}</td><td class='num'>{u['total_miles']:,.0f}</td>"
+        f"<tr><td>{u['label']}<br><span class='note'>{u.get('driver','')}</span></td><td class='num'>{u['total_miles']:,.0f}</td>"
         f"<td class='num'>{u['hours_driven']:.1f}</td>"
         f"<td class='num'>{u['utilization_percentage']:.1f}%</td></tr>"
         for u in util[:20]
@@ -206,10 +206,8 @@ def vehicle_table(data: dict) -> str:
     return (
         "<div class='tbl-wrap'>"
         "<table class='data'>"
-        "<thead><tr><th>Vehicle</th><th class='num'>Miles</th>"
-        "<th class='num'>Hours</th><th class='num'>Util %</th></tr></thead>"
-        f"<tbody>{rows}</tbody>"
-        "</table></div>"
+        "<thead><tr><th>Vehicle</th><th class='num'>Miles</th><th class='num'>Hours</th><th class='num'>Util %</th></tr></thead>"
+        "<tbody>" + rows + "</tbody></table></div>"
     )
 
 

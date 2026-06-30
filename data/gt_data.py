@@ -39,6 +39,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    asc,
     case,
     cast,
     create_engine,
@@ -332,7 +333,7 @@ def gt_vehicle_utilization(
     since: datetime | None = None,
     until: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Per-vehicle utilization: miles driven, hours, utilisation %."""
+    """Per-vehicle utilization with primary driver name."""
     since, until = _since(since), _until(until)
     rows = db.execute(
         select(
@@ -361,12 +362,32 @@ def gt_vehicle_utilization(
     period_hours = max(
         (datetime.now(timezone.utc) - since).total_seconds() / 3600, 1
     )
+
+    # Find primary driver per vehicle (most trips)
+    driver_rows = db.execute(
+        select(
+            Trip.vehicle_id,
+            Driver.name,
+            func.count(Trip.id).label("trip_count"),
+        )
+        .join(Driver, Trip.driver_id == Driver.id)
+        .where(Trip.start_time.between(since, until))
+        .group_by(Trip.vehicle_id, Driver.name)
+        .order_by(asc("vehicle_id"), desc("trip_count"))
+    ).mappings()
+    veh_driver = {}
+    for dr in driver_rows:
+        vid = dr["vehicle_id"]
+        if vid not in veh_driver:
+            veh_driver[vid] = dr["name"]
+
     return [
         {
             "vehicle_id": row["id"],
             "label": row["license_plate"]
             or row["vin"]
             or f"Vehicle {row['id']}",
+            "driver": veh_driver.get(row["id"], ""),
             "total_miles": round(float(row["miles"]), 2),
             "hours_driven": round(float(row["hours"]), 2),
             "utilization_percentage": round(

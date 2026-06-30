@@ -195,20 +195,28 @@ def form_types_chart(formtypes: pd.DataFrame, forms: pd.DataFrame) -> str:
 
 
 def forms_trend(forms: pd.DataFrame) -> str:
-    """Monthly forms — vertical bar chart with clean labels."""
+    """Monthly forms — vertical bar chart with clean labels. Click a bar to see forms."""
     df = D.forms_monthly_trend(forms)
     if df.empty:
         return empty("No form submission data")
     df["Label"] = df["Month"].dt.strftime("%b")
+    months_iso = df["Month"].dt.strftime("%Y-%m").tolist()
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
         marker=dict(color=ACCENT, line=dict(width=0)),
         hovertemplate="%{x} %{y} forms<extra></extra>",
-        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
+        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a"),
+        customdata=months_iso))
     fig.update_layout(showlegend=False)
     fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False)
     fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
-    return render(_layout(fig, 300))
+    html = render(_layout(fig, 300))
+    div_id = html.split('id="')[1].split('"')[0] if 'id="' in html else "plot-0"
+    click_js = '<script>'
+    click_js += 'document.querySelector("#' + div_id + '").on("plotly_click", function(data){'
+    click_js += 'var m = data.points[0].customdata; if(m){ htmx.ajax("GET","/_sd_forms?month="+m,{target:"#sd-forms-list",swap:"innerHTML"}); }'
+    click_js += '});</script>'
+    return html + click_js
 
 def schedule_compliance(sched: pd.DataFrame) -> str:
     """Stacked bar: status breakdown for schedules."""

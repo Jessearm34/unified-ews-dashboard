@@ -575,6 +575,7 @@ def render_overview(range_key="all"):
                 charts.append(Div(H3("Forms Monthly Trend"), NotStr(SDC.forms_trend(sd_ds.forms)), cls="panel"))
             except Exception:
                 pass
+    ov_sd_forms = Div(id="sd-forms-list") if sd_ds and not sd_ds.forms.empty else ""
 
     if charts:
         parts.append(Div(*charts, cls="grid two"))
@@ -900,6 +901,7 @@ def render_sd_section(section_key):
             Div(
                 _chart("Overdue Items", SDC.overdue_items_list, ds.schedules),
                 cls="mt"),
+            Div(id="sd-forms-list"),
         )
 
     elif section_key == "forms":
@@ -920,6 +922,7 @@ def render_sd_section(section_key):
             Div(
                 _chart("Forms by Type", SDC.form_types_chart, ds.formtypes, ds.forms),
                 cls="mt"),
+            Div(id="sd-forms-list"),
         )
 
     elif section_key == "compliance":
@@ -1129,6 +1132,34 @@ async def login(req):
         style="max-width:400px;margin:0 auto;padding:40px 20px;"
     )
 
+
+@rt("/_sd_forms")
+async def sd_forms(req):
+    """Return an HTML table of forms for a given month."""
+    month = req.query_params.get("month", "")
+    ds = _cached("sd", load_sd)
+    if not ds or ds.forms.empty or not month:
+        return Div("")
+    try:
+        # month format: "2026-05"
+        forms = ds.forms.copy()
+        forms_dates = forms["CreatedOn"] if "CreatedOn" in forms.columns else forms.get("createdOn", pd.Series())
+        mask = forms_dates.dt.strftime("%Y-%m") == month
+        matching = forms[mask].sort_values("CreatedOn" if "CreatedOn" in forms.columns else "createdOn", ascending=False).head(30)
+        if matching.empty:
+            return Div(P("No forms for " + month, cls="note"))
+        rows = []
+        for _, r in matching.iterrows():
+            name = r.get("DocumentTemplateName", r.get("Label", ""))[:40]
+            created = str(r.get("CreatedOn", ""))[:10] if hasattr(r.get("CreatedOn"), "strftime") else str(r.get("createdOn", ""))[:10]
+            by = r.get("CreatedBy", r.get("createdBy", ""))
+            rows.append(f"<tr><td>{name}</td><td>{created}</td><td>{by}</td></tr>")
+        h = "<tr><th>Form</th><th>Date</th><th>Created By</th></tr>"
+        return Div(H4("Forms in " + month, style="margin:12px 0 8px;font-size:13px;"),
+                   Div("<table class='data'><thead>" + h + "</thead><tbody>" + "".join(rows) + "</tbody></table>",
+                       cls="tbl-wrap"))
+    except Exception:
+        return Div("")
 
 @rt("/logout")
 async def logout(req):

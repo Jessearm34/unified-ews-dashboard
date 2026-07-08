@@ -566,3 +566,123 @@ def form_categories(forms: pd.DataFrame) -> pd.DataFrame:
     df["Category"] = df[col].apply(form_category)
     result = df.groupby("Category").size().reset_index(name="Count")
     return result.sort_values("Count", ascending=False)
+
+
+# --------------------------------------------------------------------------- #
+# BBSO & RIR (Safety Engagement KPIs)
+# --------------------------------------------------------------------------- #
+
+BBSO_FORM_TYPE_ID = "5add4d1b-82c6-4067-a300-6f005612f3a7"
+RIR_FORM_TYPE_ID = "f5bdff50-1e1f-4a78-bc52-8a46ec78f0ed"
+
+
+def _filter_bbso(forms: pd.DataFrame) -> pd.DataFrame:
+    if forms.empty:
+        return pd.DataFrame()
+    if "DocumentTemplateVersionId" in forms.columns:
+        return forms[forms["DocumentTemplateVersionId"] == BBSO_FORM_TYPE_ID]
+    if "DocumentTemplateName" in forms.columns:
+        return forms[forms["DocumentTemplateName"] == "BBSO"]
+    return pd.DataFrame()
+
+
+def _filter_rir(forms: pd.DataFrame) -> pd.DataFrame:
+    if forms.empty:
+        return pd.DataFrame()
+    if "DocumentTemplateVersionId" in forms.columns:
+        return forms[forms["DocumentTemplateVersionId"] == RIR_FORM_TYPE_ID]
+    if "DocumentTemplateName" in forms.columns:
+        return forms[forms["DocumentTemplateName"].str.contains("RIR|Near Miss", na=False)]
+    return pd.DataFrame()
+
+
+def bbso_rir_counts(forms: pd.DataFrame) -> dict[str, Any]:
+    bbso = _filter_bbso(forms)
+    rir = _filter_rir(forms)
+    total_bbso = len(bbso)
+    total_rir = len(rir)
+
+    def _monthly(df, date_col="CreatedOn"):
+        if df.empty or date_col not in df.columns:
+            return {}
+        df = df.copy()
+        df["_m"] = pd.to_datetime(df[date_col]).dt.to_period("M")
+        return df.groupby("_m").size().to_dict()
+
+    bbso_by_month = _monthly(bbso)
+    rir_by_month = _monthly(rir)
+    this_month = pd.Timestamp.now().to_period("M")
+    bbso_this_month = bbso_by_month.get(this_month, 0)
+    rir_this_month = rir_by_month.get(this_month, 0)
+
+    def _by_worker(df):
+        if df.empty:
+            return {}
+        col = "CreatedBy" if "CreatedBy" in df.columns else "createdBy"
+        if col not in df.columns:
+            return {}
+        return df[col].value_counts().to_dict()
+
+    bbso_by_worker = _by_worker(bbso)
+    rir_by_worker = _by_worker(rir)
+
+    return {
+        "total_bbso": total_bbso, "total_rir": total_rir,
+        "bbso_this_month": bbso_this_month, "rir_this_month": rir_this_month,
+        "bbso_by_month": bbso_by_month, "rir_by_month": rir_by_month,
+        "bbso_by_worker": bbso_by_worker, "rir_by_worker": rir_by_worker,
+        "bbso_contributors": len(bbso_by_worker),
+        "rir_contributors": len(rir_by_worker),
+    }
+
+
+def bbso_monthly_trend(forms: pd.DataFrame) -> pd.DataFrame:
+    bbso = _filter_bbso(forms)
+    if bbso.empty:
+        return pd.DataFrame(columns=["Month", "Count"])
+    col = "CreatedOn" if "CreatedOn" in bbso.columns else "createdOn"
+    if col not in bbso.columns:
+        return pd.DataFrame(columns=["Month", "Count"])
+    df = bbso.dropna(subset=[col]).copy()
+    if df.empty:
+        return pd.DataFrame(columns=["Month", "Count"])
+    df["Month"] = pd.to_datetime(df[col]).dt.to_period("M").dt.to_timestamp()
+    result = df.groupby("Month").size().reset_index(name="Count")
+    return result.sort_values("Month").reset_index(drop=True)
+
+
+def rir_monthly_trend(forms: pd.DataFrame) -> pd.DataFrame:
+    rir = _filter_rir(forms)
+    if rir.empty:
+        return pd.DataFrame(columns=["Month", "Count"])
+    col = "CreatedOn" if "CreatedOn" in rir.columns else "createdOn"
+    if col not in rir.columns:
+        return pd.DataFrame(columns=["Month", "Count"])
+    df = rir.dropna(subset=[col]).copy()
+    if df.empty:
+        return pd.DataFrame(columns=["Month", "Count"])
+    df["Month"] = pd.to_datetime(df[col]).dt.to_period("M").dt.to_timestamp()
+    result = df.groupby("Month").size().reset_index(name="Count")
+    return result.sort_values("Month").reset_index(drop=True)
+
+
+def bbso_rir_leaderboard(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.DataFrame:
+    if workers.empty:
+        return pd.DataFrame(columns=["Worker", "BBSO", "RIR", "HSE_Engagement"])
+    bbso = _filter_bbso(forms)
+    rir = _filter_rir(forms)
+    col = "CreatedBy" if "CreatedBy" in forms.columns else "createdBy"
+    active = workers[workers["Active"].astype(bool)] if "Active" in workers.columns else workers
+    rows = []
+    for _, w in active.iterrows():
+        wid = w["Id"]
+        name = f"{w.get('FirstName','')} {w.get('LastName','')}".strip()
+        b = int((bbso[col] == wid).sum()) if col in bbso.columns else 0
+        r = int((rir[col] == wid).sum()) if col in rir.columns else 0
+        engagement = (b + r) / 3.0
+        if b > 0 or r > 0:
+            rows.append({"Worker": name, "BBSO": b, "RIR": r, "HSE_Engagement": round(engagement, 1)})
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["Worker", "BBSO", "RIR", "HSE_Engagement"])
+    return df.sort_values("HSE_Engagement", ascending=False).reset_index(drop=True)

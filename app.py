@@ -477,6 +477,7 @@ def render_overview(range_key="all"):
         w_count = SD.worker_counts(sd_ds.workers)
         f_count = SD.form_counts(sd_ds.forms)
         part = SD.worker_participation(sd_ds.workers, sd_ds.forms)
+        brc = SD.bbso_rir_counts(sd_ds.forms)
         rag = rag_for_value(sched_c["completion_pct"], 80, 60)
         sd_kpis = [
             kpi_card("Schedule Compliance", sched_c["completion_pct"], "%",
@@ -484,10 +485,11 @@ def render_overview(range_key="all"):
             kpi_card("Overdue Items", float(sched_c["overdue"]), "",
                      rag=rag_for_value(sched_c["overdue"], 5, 15, False),
                      platform="SD"),
-            kpi_card("Worker Participation", part["pct"], "%",
-                     rag=rag_for_value(part["pct"], 80, 60),
+            kpi_card("BBSO", float(brc["total_bbso"]), "",
+                     hint=f"{brc['bbso_this_month']} this month",
                      platform="SD"),
-            kpi_card("Forms This Month", float(f_count["month"]), "",
+            kpi_card("RIR / Near Miss", float(brc["total_rir"]), "",
+                     hint=f"{brc['rir_this_month']} this month",
                      platform="SD"),
         ]
 
@@ -902,12 +904,16 @@ def render_sd_section(section_key):
         sched_c = SD.schedule_counts(ds.schedules)
         f_count = SD.form_counts(ds.forms)
         part = SD.worker_participation(ds.workers, ds.forms)
+        brc = SD.bbso_rir_counts(ds.forms)
         cards = [
             kpi_card("Schedule Compliance", sched_c["completion_pct"], "%",
                      rag=rag_for_value(sched_c["completion_pct"], 80, 60)),
             kpi_card("Overdue Items", float(sched_c["overdue"]), "",
                      rag=rag_for_value(sched_c["overdue"], 5, 15, False)),
-            kpi_card("Forms This Month", float(f_count["month"]), ""),
+            kpi_card("BBSO", float(brc["total_bbso"]), "",
+                     hint=f"{brc['bbso_this_month']} this month · {brc['bbso_contributors']} workers"),
+            kpi_card("RIR / Near Miss", float(brc["total_rir"]), "",
+                     hint=f"{brc['rir_this_month']} this month · {brc['rir_contributors']} workers"),
             kpi_card("Worker Participation", part["pct"], "%",
                      rag=rag_for_value(part["pct"], 80, 60)),
         ]
@@ -919,12 +925,13 @@ def render_sd_section(section_key):
                 _chart("Forms by Category", SDC.form_category_chart, ds.forms),
                 cls="grid two"),
             Div(
-                _chart("Monthly Trend", SDC.forms_trend, ds.forms),
-                _chart("Worker Activity", SDC.worker_leaderboard_table, ds.workers, ds.forms, ds.signatures, ds.schedules),
+                _chart("Monthly BBSO", SDC.bbso_trend, ds.forms),
+                _chart("Monthly RIR / Near Miss", SDC.rir_trend, ds.forms),
                 cls="grid two mt"),
             Div(
+                _chart("BBSO & RIR by Worker", SDC.bbso_rir_leaderboard_table, ds.workers, ds.forms),
                 _chart("Overdue Items", SDC.overdue_items_list, ds.schedules),
-                cls="mt"),
+                cls="grid two mt"),
             Div(id="sd-forms-list"),
         )
 

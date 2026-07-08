@@ -318,3 +318,56 @@ def form_category_chart(forms: pd.DataFrame) -> str:
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
     return render(_layout(fig, 280))
+
+
+# ── BBSO & RIR Charts ───────────────────────────────────────────────────────
+
+
+def bbso_trend(forms: pd.DataFrame) -> str:
+    df = D.bbso_monthly_trend(forms)
+    if df.empty:
+        return empty("No BBSO data yet")
+    df["Label"] = df["Month"].dt.strftime("%b")
+    fig = go.Figure(go.Bar(
+        x=df["Label"], y=df["Count"],
+        marker=dict(color="#7c3aed", line=dict(width=0)),
+        hovertemplate="%{x} %{y} BBSOs<extra></extra>",
+        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
+    fig.update_layout(showlegend=False)
+    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False)
+    fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
+    return render(_layout(fig, 260))
+
+
+def rir_trend(forms: pd.DataFrame) -> str:
+    df = D.rir_monthly_trend(forms)
+    if df.empty:
+        return empty("No RIR data yet")
+    df["Label"] = df["Month"].dt.strftime("%b")
+    fig = go.Figure(go.Bar(
+        x=df["Label"], y=df["Count"],
+        marker=dict(color="#ea580c", line=dict(width=0)),
+        hovertemplate="%{x} %{y} RIRs<extra></extra>",
+        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
+    fig.update_layout(showlegend=False)
+    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False)
+    fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
+    return render(_layout(fig, 260))
+
+
+def bbso_rir_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> str:
+    df = D.bbso_rir_leaderboard(workers, forms)
+    if df.empty:
+        return empty("No BBSO or RIR data yet")
+    rows = []
+    for _, r in df.iterrows():
+        eng = r["HSE_Engagement"]
+        eng_cls = "badge green" if eng >= 2.0 else ("badge" if eng >= 1.0 else "badge red")
+        rows.append(f"""<tr>
+            <td>{r['Worker']}</td>
+            <td class='num'>{int(r['BBSO'])}</td>
+            <td class='num'>{int(r['RIR'])}</td>
+            <td><span class='{eng_cls}'>{eng}</span></td>
+        </tr>""")
+    header = """<tr><th>Worker</th><th>BBSO</th><th>RIR</th><th>HSE Engagement</th></tr>"""
+    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""

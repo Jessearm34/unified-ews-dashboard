@@ -1144,9 +1144,27 @@ async def sd_forms(req):
 async def sd_inspect(req):
     """Diagnostic: show the actual columns and sample rows from sitedocs_forms."""
     try:
-        from data.sd_data import sd_read_table, _filter_bbso, _filter_rir
-        forms = sd_read_table("sitedocs_forms")
+        from data.sd_data import sd_read_table, _filter_bbso, _filter_rir, sd_engine
+        from sqlalchemy import text
+
+        # First, list all tables in the SD database
+        engine = sd_engine()
+        with engine.connect() as c:
+            tables_result = c.execute(text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema='public' AND table_type='BASE TABLE' "
+                "ORDER BY table_name"
+            ))
+            all_tables = [r[0] for r in tables_result]
+
         lines = []
+        lines.append(f"All tables in SD database ({len(all_tables)}):")
+        for t in all_tables:
+            lines.append(f"  {t}")
+
+        # Now inspect sitedocs_forms
+        forms = sd_read_table("sitedocs_forms")
+        lines.append(f"\n── sitedocs_forms ──")
         lines.append(f"Total rows: {len(forms)}")
         lines.append(f"Columns ({len(forms.columns)}):")
         for c in sorted(forms.columns):
@@ -1157,8 +1175,34 @@ async def sd_inspect(req):
                 val = forms[c].dropna().iloc[0]
                 sample = f"  eg: {str(val)[:80]}"
             lines.append(f"  {c:40s} {dtype:12s} {non_null:6d} non-null{sample}")
+
+        # Show BBSO and RIR breakdown
+        # Check what unique template names exist
+        name_counts = forms["DocumentTemplateName"].value_counts()
+        lines.append(f"\n── Form types (by DocumentTemplateName):")
+        for name, count in name_counts.head(20).items():
+            lines.append(f"  {name:40s} {count}")
+
         lines.append(f"\n── BBSO forms: {len(_filter_bbso(forms))}")
         lines.append(f"── RIR forms: {len(_filter_rir(forms))}")
+
+        # Check locations table if it exists
+        if "sitedocs_locations" in all_tables:
+            loc_df = pd.read_sql("SELECT * FROM sitedocs_locations LIMIT 5", engine)
+            lines.append(f"\n── sitedocs_locations sample (columns: {list(loc_df.columns)}):")
+            for _, r in loc_df.iterrows():
+                lines.append(f"  {dict(r)}")
+
+        # Check for any form-related tables not currently loaded
+        for t in all_tables:
+            if "form" in t.lower() and t != "sitedocs_forms":
+                try:
+                    df = pd.read_sql(f"SELECT * FROM {t} LIMIT 3", engine)
+                    lines.append(f"\n── {t} -- {len(df)} rows, columns: {list(df.columns)}")
+                except Exception as e:
+                    lines.append(f"\n── {t} -- ERROR: {e}")
+
+        engine.dispose()
         return Pre("\n".join(lines))
     except Exception as e:
         import traceback

@@ -177,7 +177,14 @@ table.data td.num { text-align: right; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-zone { display:flex; align-items:center; justify-content:center; min-height:200px; color:var(--muted); gap:8px; }
 
-/* Hide Plotly modebar & logo */
+/* Fix alignment in safety profile number cells */
+.num a { display: inline-block; min-width: 24px; text-align: center; }
+.num-link { display: inline-block; min-width: 28px; text-align: center; font-weight: 700;
+            color: var(--accent); text-decoration: none; cursor: pointer; padding: 2px 6px;
+            border-radius: 6px; transition: background .15s; }
+.num-link:hover { background: #dbeafe; }
+.num-link.warn { color: var(--warn); }
+.num-link.warn:hover { background: #ffedd5; }
 .modebar, .modebar-container, .plotly-notifier,
 .js-plotly-plot .modebar, .js-plotly-plot .modebar-btn,
 .modebar-btn, .modebar-group { display: none !important; }
@@ -590,13 +597,30 @@ def load_sd():
 
 # ── Platform section renderers ─────────────────────────────────────────────
 
+# Chart HTML cache — avoids re-rendering Plotly on every HTMX request
+_chart_html_cache: dict[str, tuple[str, float]] = {}
+_CHART_CACHE_DURATION = 30  # seconds
+
 
 def _chart(label, fn, *args, **kw):
-    """Render a chart. Returns empty string if chart has nothing to show."""
+    """Render a chart with HTML caching. Returns empty string if chart has nothing."""
+    # Build a cache key from function name + args
+    cache_key = f"{fn.__name__}:{':'.join(str(a) for a in args)}"
+    now = time.time()
+    if cache_key in _chart_html_cache:
+        cached_html, cached_ts = _chart_html_cache[cache_key]
+        if now - cached_ts < _CHART_CACHE_DURATION:
+            if not cached_html:
+                return ""
+            if label:
+                return Div(H3(label), NotStr(cached_html), cls="panel")
+            return Div(NotStr(cached_html), cls="panel")
     try:
         html = fn(*args, **kw)
         if not html or 'chart-empty' in str(html) or 'No data' in str(html) or 'No schedule' in str(html):
+            _chart_html_cache[cache_key] = ("", now)
             return ""
+        _chart_html_cache[cache_key] = (html, now)
         if label:
             return Div(H3(label), NotStr(html), cls="panel")
         return Div(NotStr(html), cls="panel")

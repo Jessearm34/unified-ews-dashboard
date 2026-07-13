@@ -421,8 +421,8 @@ def safety_profile_table(workers: pd.DataFrame, forms: pd.DataFrame) -> str:
         role = r["Role"]
         bbso_count = int(r["BBSOs"])
         rir_count = int(r["RIRs"])
-        bbso_link = f"<a href='#' class='badge' hx-get='/_sd_person_forms?worker_id={wid}&type=bbso' hx-target='#person-forms-panel' hx-swap='innerHTML'>{bbso_count}</a>" if bbso_count > 0 else "<span class='badge'>0</span>"
-        rir_link = f"<a href='#' class='badge warn' hx-get='/_sd_person_forms?worker_id={wid}&type=rir' hx-target='#person-forms-panel' hx-swap='innerHTML'>{rir_count}</a>" if rir_count > 0 else "<span class='badge'>0</span>"
+        bbso_link = f"<a class='num-link' href='javascript:void(0)' hx-get='/_sd_person_forms?worker_id={wid}&type=bbso' hx-target='#person-forms-panel' hx-swap='innerHTML'>{bbso_count}</a>" if bbso_count > 0 else "<span class='badge'>0</span>"
+        rir_link = f"<a class='num-link warn' href='javascript:void(0)' hx-get='/_sd_person_forms?worker_id={wid}&type=rir' hx-target='#person-forms-panel' hx-swap='innerHTML'>{rir_count}</a>" if rir_count > 0 else "<span class='badge'>0</span>"
         rows.append(f"""<tr>
             <td>{name}<br><span class='note'>{role}</span></td>
             <td class='num'>{bbso_link}</td>

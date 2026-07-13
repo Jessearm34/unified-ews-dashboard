@@ -525,9 +525,10 @@ def bbso_recent_at_risk_table(responses: pd.DataFrame, workers: pd.DataFrame) ->
     return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""
 
 
-def rir_events_table(responses: pd.DataFrame, workers: pd.DataFrame) -> str:
+def rir_events_table(responses: pd.DataFrame, workers: pd.DataFrame,
+                      locations: pd.DataFrame | None = None) -> str:
     """Recent RIR/Near Miss events with what happened, severity, root cause, action."""
-    df = D.rir_recent_events(responses, workers, limit=10)
+    df = D.rir_recent_events(responses, workers, locations, limit=10)
     if df.empty:
         return empty("No RIR/Near Miss events recorded")
 

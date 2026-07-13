@@ -990,18 +990,33 @@ def bbso_recent_at_risk(responses: pd.DataFrame, workers: pd.DataFrame,
 
 
 def rir_recent_events(responses: pd.DataFrame, workers: pd.DataFrame,
+                       locations: pd.DataFrame | None = None,
                        limit: int = 10) -> pd.DataFrame:
     """Most recent RIR/Near Miss events with details.
 
+    Resolves UUIDs in ItemValues against workers and locations tables.
     Returns columns: [Worker, Date, WhatHappened, Severity, RootCause, Action]
     """
     rir = rir_responses(responses)
     if rir.empty or workers.empty:
         return pd.DataFrame(columns=["Worker", "Date", "WhatHappened", "Severity", "RootCause", "Action"])
 
-    # Group by FormId to pivot
+    # Build lookup maps for UUID resolution
     workers_map = {str(w["Id"]): f"{w.get('FirstName','')} {w.get('LastName','')}".strip()
                    for _, w in workers.iterrows()}
+    locations_map = {}
+    if locations is not None and not locations.empty:
+        for _, loc in locations.iterrows():
+            locations_map[str(loc.get("Id", ""))] = str(loc.get("Name", ""))
+
+    def resolve(val: str) -> str:
+        """If val is a known UUID, return human-readable name. Otherwise val as-is."""
+        v = str(val).strip()
+        if v in workers_map:
+            return workers_map[v]
+        if v in locations_map:
+            return locations_map[v]
+        return v
 
     rows = []
     for form_id, group in rir.groupby("FormId"):
@@ -1014,7 +1029,7 @@ def rir_recent_events(responses: pd.DataFrame, workers: pd.DataFrame,
 
         for _, r in group.iterrows():
             item = str(r.get("ItemContent", "")).lower()
-            val = r.get("ItemValue", "")
+            val = resolve(r.get("ItemValue", ""))
             if "happened" in item or "describe" in item:
                 what = val
             elif "severity" in item or "potential" in item:

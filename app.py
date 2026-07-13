@@ -877,7 +877,7 @@ def render_sd_section(section_key):
             Div(
                 Div(
                     H3("Recent RIR / Near Miss Events"),
-                    NotStr(SDC.rir_events_table(ds.form_responses, ds.workers)),
+                    NotStr(SDC.rir_events_table(ds.form_responses, ds.workers, ds.locations)),
                     cls="panel",
                 ),
                 cls="mt",

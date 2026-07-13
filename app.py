@@ -1199,8 +1199,17 @@ async def sd_inspect(req):
                 try:
                     df = pd.read_sql(f"SELECT * FROM {t} LIMIT 3", engine)
                     lines.append(f"\n── {t} -- {len(df)} rows, columns: {list(df.columns)}")
+                    for _, r in df.iterrows():
+                        lines.append(f"  {dict(r)}")
                 except Exception as e:
                     lines.append(f"\n── {t} -- ERROR: {e}")
+
+        # Also peek at incidents table for any useful detail
+        if "sitedocs_incidents" in all_tables:
+            inc_df = pd.read_sql("SELECT * FROM sitedocs_incidents LIMIT 3", engine)
+            lines.append(f"\n── sitedocs_incidents sample (columns: {list(inc_df.columns)}):")
+            for _, r in inc_df.iterrows():
+                lines.append(f"  {dict(r)}")
 
         engine.dispose()
         return Pre("\n".join(lines))

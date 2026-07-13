@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import random
 
 import pandas as pd
@@ -18,6 +19,30 @@ SEQ = ["#2563eb", "#0e7490", "#7c3aed", "#16a34a", "#ea580c", "#db2777", "#0891b
 
 _PLOT_CONFIG = {"displayModeBar": False, "displaylogo": False, "responsive": True}
 _ids = iter(lambda: f'chart-{random.randrange(10_000_000, 99_999_999)}', None)
+
+
+def _clean_value(val: str) -> str:
+    """Try to parse a JSON value and extract readable text. Falls back to raw string."""
+    if not val or val == "nan":
+        return ""
+    try:
+        parsed = json.loads(val)
+        if isinstance(parsed, dict):
+            # Common SiteDocs patterns: {"Text": "...", "Value": ...} or {"Name": "...", ...}
+            for key in ("Text", "Name", "Value", "Description", "Label"):
+                if key in parsed and str(parsed[key]).strip():
+                    return str(parsed[key])
+            # Return first string-ish value
+            for v in parsed.values():
+                if isinstance(v, str) and v.strip():
+                    return v
+            return str(parsed)
+        if isinstance(parsed, list):
+            parts = [_clean_value(json.dumps(x)) if isinstance(x, (dict, list)) else str(x) for x in parsed[:3]]
+            return "; ".join(p for p in parts if p)
+        return str(parsed)
+    except (json.JSONDecodeError, TypeError):
+        return str(val)
 
 
 def _rgba(hex_color: str, alpha: float) -> str:
@@ -200,6 +225,7 @@ def forms_trend(forms: pd.DataFrame) -> str:
     if df.empty:
         return empty("No form submission data")
     df["Label"] = df["Month"].dt.strftime("%b")
+    max_val = df["Count"].max() if not df.empty else 1
     months_iso = df["Month"].dt.strftime("%Y-%m").tolist()
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
@@ -208,7 +234,8 @@ def forms_trend(forms: pd.DataFrame) -> str:
         text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a"),
         customdata=months_iso))
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False)
+    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
+                     range=[0, max_val * 1.25])
     fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
     html = render(_layout(fig, 300))
     div_id = html.split('id="')[1].split('"')[0] if 'id="' in html else "plot-0"
@@ -328,13 +355,15 @@ def bbso_trend(forms: pd.DataFrame) -> str:
     if df.empty:
         return empty("No BBSO data yet")
     df["Label"] = df["Month"].dt.strftime("%b")
+    max_val = df["Count"].max() if not df.empty else 1
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
         marker=dict(color="#7c3aed", line=dict(width=0)),
         hovertemplate="%{x} %{y} BBSOs<extra></extra>",
         text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False)
+    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
+                     range=[0, max_val * 1.25])
     fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
     return render(_layout(fig, 260))
 
@@ -344,13 +373,15 @@ def rir_trend(forms: pd.DataFrame) -> str:
     if df.empty:
         return empty("No RIR data yet")
     df["Label"] = df["Month"].dt.strftime("%b")
+    max_val = df["Count"].max() if not df.empty else 1
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
         marker=dict(color="#ea580c", line=dict(width=0)),
         hovertemplate="%{x} %{y} RIRs<extra></extra>",
         text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False)
+    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
+                     range=[0, max_val * 1.25])
     fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
     return render(_layout(fig, 260))
 
@@ -378,48 +409,29 @@ def bbso_rir_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> st
 # --------------------------------------------------------------------------- #
 
 def safety_profile_table(workers: pd.DataFrame, forms: pd.DataFrame) -> str:
-    """Combined BBSO vs RIR per-person table with profile classification.
-
-    The core insight table for safety meetings:
-      - Workers with HIGH BBSO + LOW RIR = safety leaders
-      - Workers with LOW BBSO + HIGH RIR = at-risk / need coaching
-      - Workers with HIGH BOTH = high-exposure area workers (or good reporting)
-    """
+    """Raw BBSO vs RIR per-person numbers. Click a count to see the forms."""
     df = D.bbso_rir_safety_profile(workers, forms)
     if df.empty:
         return empty("No person-level safety data yet")
 
-    def profile_badge(profile: str) -> str:
-        badges = {
-            "Safety Leader": "badge green",
-            "Active Observer": "badge green",
-            "Engaged": "badge",
-            "High-Exposure Area": "badge warn",
-            "Needs Coaching": "badge warn",
-            "Incident-Prone / At Risk": "badge red",
-        }
-        cls = badges.get(profile, "badge")
-        return f"<span class='{cls}'>{profile}</span>"
-
     rows = []
     for _, r in df.iterrows():
-        eng = r["Engagement"]
-        badge = profile_badge(r["Profile"])
+        wid = r["WorkerId"]
+        name = r["Worker"]
+        role = r["Role"]
+        bbso_count = int(r["BBSOs"])
+        rir_count = int(r["RIRs"])
+        bbso_link = f"<a href='#' class='badge' hx-get='/_sd_person_forms?worker_id={wid}&type=bbso' hx-target='#person-forms-panel' hx-swap='innerHTML'>{bbso_count}</a>" if bbso_count > 0 else "<span class='badge'>0</span>"
+        rir_link = f"<a href='#' class='badge warn' hx-get='/_sd_person_forms?worker_id={wid}&type=rir' hx-target='#person-forms-panel' hx-swap='innerHTML'>{rir_count}</a>" if rir_count > 0 else "<span class='badge'>0</span>"
         rows.append(f"""<tr>
-            <td>{r['Worker']}<br><span class='note'>{r['Role']}</span></td>
-            <td class='num'>{int(r['BBSOs'])}</td>
-            <td class='num'>{int(r['RIRs'])}</td>
-            <td class='num'>{eng}</td>
-            <td>{badge}</td>
+            <td>{name}<br><span class='note'>{role}</span></td>
+            <td class='num'>{bbso_link}</td>
+            <td class='num'>{rir_link}</td>
         </tr>""")
-    header = """<tr><th>Worker</th><th class='num'>BBSOs</th><th class='num'>RIRs</th>
-                <th class='num'>Score</th><th>Profile</th></tr>"""
-    note = ("<div class='note' style='margin-top:8px'>"
-            "<strong>How to read:</strong> High BBSOs + Low RIRs = safety leader. "
-            "Low BBSOs + High RIRs = at-risk (needs coaching). "
-            "High BBSOs + High RIRs = working in high-exposure area (good reporting).</div>")
+    header = """<tr><th>Worker</th><th class='num'>BBSOs</th><th class='num'>RIRs</th></tr>"""
+    panel = f"""<div id='person-forms-panel' class='mt'></div>"""
     return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}
-    </tbody></table></div>{note}"""
+    </tbody></table></div>{panel}"""
 
 
 def observer_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> str:
@@ -488,11 +500,8 @@ def bbso_category_safety_table(responses: pd.DataFrame) -> str:
             <td class='num'>{bar} <span class='{cls}'>{pct:.0f}%</span></td>
         </tr>""")
     header = """<tr><th>Category</th><th class='num'>Safe</th><th class='num'>At-Risk</th><th class='num'>Safe %</th></tr>"""
-    note = ("<div class='note' style='margin-top:8px'><strong>How to read:</strong> "
-            "Categories with low Safe % are where coaching should focus. "
-            "Click forms tab for drill-down.</div>")
     return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}
-    </tbody></table></div>{note}"""
+    </tbody></table></div>"""
 
 
 def bbso_recent_at_risk_table(responses: pd.DataFrame, workers: pd.DataFrame) -> str:
@@ -524,15 +533,15 @@ def rir_events_table(responses: pd.DataFrame, workers: pd.DataFrame) -> str:
 
     rows = []
     for _, r in df.iterrows():
-        sev = r["Severity"]
+        sev = _clean_value(r["Severity"])
         sev_cls = "badge red" if "high" in sev.lower() else ("badge warn" if "medium" in sev.lower() else "badge")
         rows.append(f"""<tr>
             <td>{r['Worker']}</td>
             <td>{r['Date']}</td>
-            <td>{str(r['WhatHappened'])[:60]}</td>
-            <td><span class='{sev_cls}'>{sev[:20]}</span></td>
-            <td>{str(r['RootCause'])[:50]}</td>
-            <td>{str(r['Action'])[:50]}</td>
+            <td>{_clean_value(str(r['WhatHappened']))[:80]}</td>
+            <td><span class='{sev_cls}'>{sev[:25]}</span></td>
+            <td>{_clean_value(str(r['RootCause']))[:60]}</td>
+            <td>{_clean_value(str(r['Action']))[:60]}</td>
         </tr>""")
     header = """<tr><th>Reporter</th><th>Date</th><th>What Happened</th><th>Severity</th><th>Root Cause</th><th>Action</th></tr>"""
     return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""

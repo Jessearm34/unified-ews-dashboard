@@ -839,23 +839,16 @@ def rir_reporter_leaderboard(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.D
 def bbso_rir_safety_profile(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.DataFrame:
     """Combined safety profile per person: BBSOs submitted vs RIRs reported.
 
-    This is the key insight table:
-      - Workers with HIGH BBSOs + LOW RIRs = engaged safety leaders
-      - Workers with LOW BBSOs + HIGH RIRs = at-risk (need coaching or are
-        working in inherently riskier areas)
-      - Workers with HIGH BOTH = active reporters (good culture but may need
-        systemic hazard review)
-      - Workers with LOW BOTH = disengaged from safety process
-
-    Returns columns [Worker, BBSOs, RIRs, Engagement, Role, Profile].
+    Returns columns [Worker, WorkerId, BBSOs, RIRs, Role].
+    No classifications or engagement scores — just raw numbers.
     """
     if workers.empty:
-        return pd.DataFrame(columns=["Worker", "BBSOs", "RIRs", "Engagement", "Role", "Profile"])
+        return pd.DataFrame(columns=["Worker", "WorkerId", "BBSOs", "RIRs", "Role"])
     bbso = _filter_bbso(forms)
     rir = _filter_rir(forms)
     col = _created_by_col(forms)
     if col is None:
-        return pd.DataFrame(columns=["Worker", "BBSOs", "RIRs", "Engagement", "Role", "Profile"])
+        return pd.DataFrame(columns=["Worker", "WorkerId", "BBSOs", "RIRs", "Role"])
 
     active = workers[workers["Active"].astype(bool)] if "Active" in workers.columns else workers
     rows = []
@@ -865,31 +858,14 @@ def bbso_rir_safety_profile(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.Da
         r = int((rir[col] == wid).sum()) if col in rir.columns else 0
         if b == 0 and r == 0:
             continue
-        # Engagement: weighted by significance — more weight to RIR involvement
-        engagement = round((b * 1.0 + r * 2.0) / 3.0, 1)
-        # Profile classification
-        if b >= 3 and r == 0:
-            profile = "Safety Leader"
-        elif b >= 3 and r <= 1:
-            profile = "Active Observer"
-        elif r >= 3 and b == 0:
-            profile = "Incident-Prone / At Risk"
-        elif r >= 2 and b <= 1:
-            profile = "Needs Coaching"
-        elif b >= 1 and r >= 2:
-            profile = "High-Exposure Area"
-        elif b >= 1 or r >= 1:
-            profile = "Engaged"
-        else:
-            profile = "—"
         is_ext = bool(w.get("IsExternal", False)) if "IsExternal" in workers.columns else False
         role = "Contractor" if is_ext else "Employee"
-        rows.append({"Worker": _worker_name(w), "BBSOs": b, "RIRs": r,
-                      "Engagement": engagement, "Role": role, "Profile": profile})
+        rows.append({"Worker": _worker_name(w), "WorkerId": wid,
+                      "BBSOs": b, "RIRs": r, "Role": role})
     df = pd.DataFrame(rows)
     if df.empty:
-        return pd.DataFrame(columns=["Worker", "BBSOs", "RIRs", "Engagement", "Role", "Profile"])
-    return df.sort_values("Engagement", ascending=False).reset_index(drop=True)
+        return pd.DataFrame(columns=["Worker", "WorkerId", "BBSOs", "RIRs", "Role"])
+    return df.sort_values("BBSOs", ascending=False).reset_index(drop=True)
 
 
 # --------------------------------------------------------------------------- #

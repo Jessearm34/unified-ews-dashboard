@@ -850,75 +850,42 @@ def render_sd_section(section_key):
             kpi_card("Worker Participation", part["pct"], "%",
                      rag=rag_for_value(part["pct"], 80, 60)),
         ]
-        # Context note explaining leading vs lagging
-        context_note = Div(
-            Div(
-                Span("💡", style="font-size:16px;margin-right:8px;"),
-                Span("BBSO observations", style="font-weight:700;"),
-                Span(" measure proactive safety behavior (leading indicator). "),
-                Span("RIR / Near Miss reports", style="font-weight:700;"),
-                Span(" capture events that almost caused harm. "),
-                Span("Use the person-level table below to see who's engaged vs who needs coaching.", style="color:var(--muted);"),
-                style="font-size:12px;line-height:1.5;",
-            ),
-            style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin:12px 0;",
-        )
         return (
             H2("HSE Overview"),
             kpi_grid(cards),
-            context_note,
-            # ── Person-Level Safety Profile (the key insight) ──
             Div(
                 Div(
-                    H3("👤 Safety Profile — Who's Doing What"),
+                    H3("Safety Profile"),
                     NotStr(SDC.safety_profile_table(ds.workers, ds.forms)),
                     cls="panel",
                 ),
                 cls="mt",
             ),
-            # ── Observer vs Reporter side-by-side ──
             Div(
                 Div(
-                    H3("🔭 Top BBSO Observers", Span("Who submits the most observations?", cls="note", style="font-weight:400;font-size:11px;")),
+                    H3("Top BBSO Observers"),
                     NotStr(SDC.observer_leaderboard_table(ds.workers, ds.forms)),
                     cls="panel",
                 ),
                 Div(
-                    H3("⚠️ Top RIR / Near Miss Reporters", Span("Who reports incidents?", cls="note", style="font-weight:400;font-size:11px;")),
+                    H3("Top RIR / Near Miss Reporters"),
                     NotStr(SDC.reporter_leaderboard_table(ds.workers, ds.forms)),
                     cls="panel",
                 ),
                 cls="grid two mt",
             ),
-            # ── Activity-Level Detail (from form_responses) ──
-            H3("📋 Safety Observations — What's Actually Being Seen",
-               style="margin:20px 0 8px;font-size:15px;font-weight:700;"),
             Div(
                 Div(
-                    H3("Category Safety", Span("Safe vs at-risk by type", cls="note", style="font-weight:400;font-size:11px;")),
-                    NotStr(SDC.bbso_category_safety_table(ds.form_responses)),
-                    cls="panel",
-                ),
-                Div(
-                    H3("Recent At-Risk Observations", Span("Latest coaching opportunities", cls="note", style="font-weight:400;font-size:11px;")),
-                    NotStr(SDC.bbso_recent_at_risk_table(ds.form_responses, ds.workers)),
-                    cls="panel",
-                ),
-                cls="grid two mt",
-            ),
-            Div(
-                Div(
-                    H3("⚠️ Recent RIR / Near Miss Events"),
+                    H3("Recent RIR / Near Miss Events"),
                     NotStr(SDC.rir_events_table(ds.form_responses, ds.workers)),
                     cls="panel",
                 ),
                 cls="mt",
             ) if hasattr(ds, 'form_responses') and not ds.form_responses.empty else "",
-            # ── Trend charts ──
-            H3("Trends Over Time", style="margin:20px 0 8px;font-size:15px;font-weight:700;"),
+            H3("Trends", style="margin:20px 0 8px;font-size:15px;font-weight:700;"),
             Div(
-                _chart("Monthly BBSO Trend", SDC.bbso_trend, ds.forms),
-                _chart("Monthly RIR / Near Miss Trend", SDC.rir_trend, ds.forms),
+                _chart("Monthly BBSO", SDC.bbso_trend, ds.forms),
+                _chart("Monthly RIR / Near Miss", SDC.rir_trend, ds.forms),
                 cls="grid two",
             ),
             Div(
@@ -1162,6 +1129,66 @@ async def sd_forms(req):
         )
     except Exception:
         return Div("")
+
+
+@rt("/_sd_person_forms")
+async def sd_person_forms(req):
+    """Show BBSO or RIR forms filed by a specific worker. Used by HTMX click on Safety Profile."""
+    worker_id = req.query_params.get("worker_id", "")
+    form_type = req.query_params.get("type", "bbso")
+    ds = _cached("sd", load_sd)
+    if not ds or ds.forms.empty or not worker_id:
+        return Div("")
+
+    # Resolve worker name
+    worker_name = worker_id[:12]
+    if not ds.workers.empty and "Id" in ds.workers.columns:
+        wm = ds.workers[ds.workers["Id"] == worker_id]
+        if not wm.empty:
+            w = wm.iloc[0]
+            worker_name = f"{w.get('FirstName','')} {w.get('LastName','')}".strip() or worker_id[:12]
+
+    # Filter forms by type and creator
+    forms = ds.forms.copy()
+    if form_type == "bbso":
+        from data.sd_data import _filter_bbso
+        filtered = _filter_bbso(forms)
+        type_label = "BBSO"
+    else:
+        from data.sd_data import _filter_rir
+        filtered = _filter_rir(forms)
+        type_label = "RIR / Near Miss"
+
+    col = "CreatedBy" if "CreatedBy" in filtered.columns else "createdBy"
+    if col not in filtered.columns:
+        return Div(P(f"No {type_label} forms found for {worker_name}", cls="note"))
+
+    person_forms = filtered[filtered[col] == worker_id].copy()
+    if person_forms.empty:
+        return Div(P(f"No {type_label} forms from {worker_name}", cls="note"))
+
+    # Sort by date descending
+    date_col = "CreatedOn" if "CreatedOn" in person_forms.columns else "createdOn"
+    if date_col in person_forms.columns:
+        person_forms[date_col] = pd.to_datetime(person_forms[date_col], errors="coerce")
+        person_forms = person_forms.sort_values(date_col, ascending=False)
+
+    rows = []
+    for _, r in person_forms.head(20).iterrows():
+        name = r.get("DocumentTemplateName", r.get("Label", ""))[:50]
+        dt = str(r.get(date_col, ""))[:10] if date_col in r else ""
+        loc_id = r.get("LocationId", "")
+        rows.append(f"<tr><td>{name}</td><td>{dt}</td><td>{loc_id[:12]}</td></tr>")
+
+    header = "<tr><th>Form Type</th><th>Date</th><th>Location</th></tr>"
+    count = len(person_forms)
+    return Div(
+        H3(f"{type_label} forms by {worker_name} ({count})",
+           style="margin:0 0 8px;font-size:14px;"),
+        Div(NotStr(f"<table class='data'><thead>{header}</thead><tbody>{''.join(rows)}</tbody></table>"),
+            cls="tbl-wrap"),
+        cls="panel",
+    )
 
 
 @rt("/_sd_inspect")

@@ -572,27 +572,73 @@ def form_categories(forms: pd.DataFrame) -> pd.DataFrame:
 # BBSO & RIR (Safety Engagement KPIs)
 # --------------------------------------------------------------------------- #
 
+# UUIDs for BBSO / RIR form types in the SiteDocs warehouse.
+# Check these against your actual data — they vary per SiteDocs account.
 BBSO_FORM_TYPE_ID = "5add4d1b-82c6-4067-a300-6f005612f3a7"
 RIR_FORM_TYPE_ID = "f5bdff50-1e1f-4a78-bc52-8a46ec78f0ed"
+
+# Name-based keywords (used as fallback when UUID column is missing or unmatched)
+BBSO_KEYWORDS = ["BBSO", "Behavioral Based Safety", "Behavior Based Safety",
+                 "Safety Observation", "Safe Behavior"]
+RIR_KEYWORDS = ["RIR", "Near Miss", "Recordable Incident", "Recordable Injury",
+                "First Aid", "Medical Treatment"]
+
+
+def _matches_name(name: str, keywords: list[str]) -> bool:
+    """Check if a form type name matches any of the given keywords (case-insensitive)."""
+    n = str(name).lower()
+    return any(k.lower() in n for k in keywords)
 
 
 def _filter_bbso(forms: pd.DataFrame) -> pd.DataFrame:
     if forms.empty:
         return pd.DataFrame()
+
+    # Strategy 1: DocumentTemplateVersionId (UUID)
     if "DocumentTemplateVersionId" in forms.columns:
-        return forms[forms["DocumentTemplateVersionId"] == BBSO_FORM_TYPE_ID]
+        matched = forms[forms["DocumentTemplateVersionId"] == BBSO_FORM_TYPE_ID]
+        if not matched.empty:
+            return matched
+
+    # Strategy 2: FormTypeName / FormType
+    for col in ("FormTypeName", "FormType", "TypeName"):
+        if col in forms.columns:
+            matched = forms[forms[col].apply(lambda x: _matches_name(x, BBSO_KEYWORDS))]
+            if not matched.empty:
+                return matched
+
+    # Strategy 3: DocumentTemplateName (name-based)
     if "DocumentTemplateName" in forms.columns:
-        return forms[forms["DocumentTemplateName"] == "BBSO"]
+        matched = forms[forms["DocumentTemplateName"].apply(lambda x: _matches_name(x, BBSO_KEYWORDS))]
+        if not matched.empty:
+            return matched
+
     return pd.DataFrame()
 
 
 def _filter_rir(forms: pd.DataFrame) -> pd.DataFrame:
     if forms.empty:
         return pd.DataFrame()
+
+    # Strategy 1: DocumentTemplateVersionId (UUID)
     if "DocumentTemplateVersionId" in forms.columns:
-        return forms[forms["DocumentTemplateVersionId"] == RIR_FORM_TYPE_ID]
+        matched = forms[forms["DocumentTemplateVersionId"] == RIR_FORM_TYPE_ID]
+        if not matched.empty:
+            return matched
+
+    # Strategy 2: FormTypeName / FormType
+    for col in ("FormTypeName", "FormType", "TypeName"):
+        if col in forms.columns:
+            matched = forms[forms[col].apply(lambda x: _matches_name(x, RIR_KEYWORDS))]
+            if not matched.empty:
+                return matched
+
+    # Strategy 3: DocumentTemplateName (name-based)
     if "DocumentTemplateName" in forms.columns:
-        return forms[forms["DocumentTemplateName"].str.contains("RIR|Near Miss", na=False)]
+        matched = forms[forms["DocumentTemplateName"].apply(lambda x: _matches_name(x, RIR_KEYWORDS))]
+        if not matched.empty:
+            return matched
+
     return pd.DataFrame()
 
 

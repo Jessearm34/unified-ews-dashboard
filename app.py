@@ -1,7 +1,8 @@
-"""Unified EWS Dashboard — QuickBooks + SiteDocs + GeoTab in one place.
+"""Unified EWS Dashboard — QuickBooks + SiteDocs in one place.
 
 All data comes from real PostgreSQL databases, one per platform.
-Three existing dashboards stay up unchanged; this is a 4th deployment.
+Two existing dashboards stay up unchanged; this is a 3rd deployment.
+GeoTab was removed — unreliable + comes with its own dashboard.
 """
 from __future__ import annotations
 
@@ -20,7 +21,6 @@ load_dotenv()
 
 from data import qb_data as QB
 from data import sd_data as SD
-from data import gt_data as GT
 
 # ── App setup ──────────────────────────────────────────────────────────────
 
@@ -263,14 +263,6 @@ PLATFORMS = [
             ("workers", "Workers", "👷"),
         ],
     },
-    {
-        "key": "gt",
-        "label": "GeoTab",
-        "icon": "🚛",
-        "sections": [
-            ("fleet", "Fleet Overview", "📊"),
-        ],
-    },
 ]
 
 
@@ -430,7 +422,7 @@ def shell(content, active_platform=None, active_section="overview", title=""):
 # ── Overview (cross-platform) ─────────────────────────────────────────────
 
 def render_overview(range_key="all"):
-    """Top KPIs and charts from all three platforms."""
+    """Top KPIs and charts from both platforms (QB + SD). GeoTab removed."""
     parts = []
     start, end = resolve_date_range(range_key)
 
@@ -452,10 +444,9 @@ def render_overview(range_key="all"):
             id="ov-custom-range", style="display:none;gap:6px;align-items:center;")
         return Div(Span("Range:", cls="lbl"), *btns, custom, cls="controls")
 
-    # ── Load data from all three platforms ──
+    # ── Load data from both platforms ──
     qb_ds = _cached("qb", load_qb)
     sd_ds = _cached("sd", load_sd)
-    gt_conn = _cached("gt", load_gt)
 
     # ── Top KPI row: 4 per platform ──
     qb_kpis = []
@@ -493,30 +484,7 @@ def render_overview(range_key="all"):
                      platform="SD"),
         ]
 
-    gt_kpis = []
-    if gt_conn:
-        try:
-            db = gt_conn
-            since_365 = datetime.now(timezone.utc) - timedelta(days=365)
-            summary = GT.gt_fleet_summary(db, since_365, datetime.now(timezone.utc))
-            trends = GT.gt_daily_trends(db, since_365, datetime.now(timezone.utc))
-            speed = GT.gt_speed_analysis(db, since_365, datetime.now(timezone.utc))
-            total_trips = sum(t["trips"] for t in trends)
-            gt_kpis = [
-                kpi_card("Active Vehicles", summary.active_vehicles, "",
-                         hint=f"of {summary.total_vehicles} total", platform="GT"),
-                kpi_card("Fleet Miles", summary.total_fleet_miles, "",
-                         hint="12-month total", platform="GT"),
-                kpi_card("Total Trips", total_trips, "",
-                         platform="GT"),
-                kpi_card("Speeding Events", speed["speeding_count"], "",
-                         hint=f"{speed['speeding_pct']:.1f}% of GPS", platform="GT"),
-            ]
-            db.close()
-        except Exception:
-            pass
-
-    all_kpis = (*qb_kpis, *sd_kpis, *gt_kpis)
+    all_kpis = (*qb_kpis, *sd_kpis)
     if all_kpis:
         groups = []
         if qb_kpis:
@@ -525,9 +493,6 @@ def render_overview(range_key="all"):
         if sd_kpis:
             groups.append(Div(Div(NotStr("SiteDocs"), Div(cls="line"), cls="kpi-group-title"),
                               Div(*sd_kpis, cls="kpis"), cls="kpi-group"))
-        if gt_kpis:
-            groups.append(Div(Div(NotStr("GeoTab"), Div(cls="line"), cls="kpi-group-title"),
-                              Div(*gt_kpis, cls="kpis"), cls="kpi-group"))
         parts.append(Div(*groups))
 
     # ── Charts: 2×2 grid (only render if data exists) ──
@@ -555,25 +520,14 @@ def render_overview(range_key="all"):
             except Exception:
                 pass
 
-    # 3. Fleet Daily Mileage (GT)
-    if gt_conn:
-        from charts import gt_charts as GTC
-        try:
-            db = gt_conn
-            since_365 = datetime.now(timezone.utc) - timedelta(days=365)
-            trends = GT.gt_daily_trends(db, since_365, datetime.now(timezone.utc))
-            speed = GT.gt_speed_analysis(db, since_365, datetime.now(timezone.utc))
-            vehicle_util = GT.gt_vehicle_utilization(db, since_365, datetime.now(timezone.utc))
-            idling = GT.gt_idling_summary(db, since_365, datetime.now(timezone.utc))
-            locations = GT.gt_latest_locations(db)
-            drivers = GT.gt_driver_metrics(db, since_365, datetime.now(timezone.utc))
-            gt_data = {"trends": trends, "speed": speed, "vehicle_util": vehicle_util,
-                       "idling": idling, "locations": locations, "drivers": drivers}
-            if trends:
-                charts.append(Div(H3("Daily Mileage Trend"), NotStr(GTC.daily_mileage_chart(gt_data)), cls="panel"))
-            db.close()
-        except Exception:
-            pass
+    # 3. Monthly BBSO (SD)
+    if sd_ds:
+        if not sd_ds.forms.empty:
+            try:
+                from charts import sd_charts as SDC
+                charts.append(Div(H3("Monthly BBSO"), NotStr(SDC.bbso_trend(sd_ds.forms)), cls="panel"))
+            except Exception:
+                pass
 
     # 4. Forms Monthly Trend (SD)
     if sd_ds:
@@ -599,9 +553,7 @@ _CACHE_DURATION = 600  # 10 minutes
 
 
 def _cached(key, loader):
-    """Load data once and cache for _CACHE_DURATION seconds. Skips cache for GT (DB sessions)."""
-    if key == "gt":
-        return load_gt()
+    """Load data once and cache for _CACHE_DURATION seconds."""
     now = time.time()
     if key in _data_cache and (now - _cache_ts.get(key, 0) < _CACHE_DURATION):
         return _data_cache[key]
@@ -635,13 +587,6 @@ def load_sd():
     return None
 
 
-def load_gt():
-    try:
-        return next(GT.get_db())
-    except Exception:
-        return None
-
-
 # ── Platform section renderers ─────────────────────────────────────────────
 
 
@@ -656,20 +601,6 @@ def _chart(label, fn, *args, **kw):
     except Exception:
         return ""
 
-
-
-
-def _driver_table(drivers):
-    if not drivers:
-        return ""
-    rows = []
-    for d in drivers[:20]:
-        rows.append("<tr><td>" + str(d.get("name",""))[:25] + "</td>"
-                    + "<td class='num'>" + str(d.get("trip_count",0)) + "</td>"
-                    + "<td class='num'>" + "{:,.0f}".format(d.get("distance_driven",0)) + "</td>"
-                    + "<td class='num'>" + "{:,.0f}".format(d.get("average_trip_length",0)) + "</td></tr>")
-    h = "<tr><th>Driver</th><th class='num'>Trips</th><th class='num'>Distance (mi)</th><th class='num'>Avg Trip</th></tr>"
-    return "<table class='data'><thead>" + h + "</thead><tbody>" + "".join(rows) + "</tbody></table>"
 
 
 def render_qb_section(section_key, basis="accrual", range_key="all", metric="revenue"):
@@ -893,7 +824,7 @@ def customer_table(ds, invoices):
 
 
 def render_sd_section(section_key):
-    """Render a SiteDocs sub-tab."""
+    """Render a SiteDocs sub-tab with BBSO & RIR KPIs prominent throughout."""
     ds = _cached("sd", load_sd)
     if not ds:
         return Div(H2("SiteDocs"), Div("No data available.", cls="chart-empty"), cls="mt")
@@ -925,8 +856,8 @@ def render_sd_section(section_key):
                 _chart("Forms by Category", SDC.form_category_chart, ds.forms),
                 cls="grid two"),
             Div(
-                _chart("Monthly BBSO", SDC.bbso_trend, ds.forms),
-                _chart("Monthly RIR / Near Miss", SDC.rir_trend, ds.forms),
+                _chart("Monthly BBSO Trend", SDC.bbso_trend, ds.forms),
+                _chart("Monthly RIR / Near Miss Trend", SDC.rir_trend, ds.forms),
                 cls="grid two mt"),
             Div(
                 _chart("BBSO & RIR by Worker", SDC.bbso_rir_leaderboard_table, ds.workers, ds.forms),
@@ -938,9 +869,14 @@ def render_sd_section(section_key):
     elif section_key == "forms":
         f_count = SD.form_counts(ds.forms)
         w_count = SD.worker_counts(ds.workers)
+        brc = SD.bbso_rir_counts(ds.forms)
         cards = [
             kpi_card("Total Forms", float(f_count["total"]), ""),
             kpi_card("This Month", float(f_count["month"]), ""),
+            kpi_card("BBSO", float(brc["total_bbso"]), "",
+                     hint=f"{brc['bbso_this_month']} this month"),
+            kpi_card("RIR / Near Miss", float(brc["total_rir"]), "",
+                     hint=f"{brc['rir_this_month']} this month"),
             kpi_card("Active Workers", float(w_count["active"]), ""),
         ]
         return (
@@ -951,6 +887,10 @@ def render_sd_section(section_key):
                 _chart("Monthly Trend", SDC.forms_trend, ds.forms),
                 cls="grid two"),
             Div(
+                _chart("Monthly BBSO Trend", SDC.bbso_trend, ds.forms),
+                _chart("Monthly RIR / Near Miss Trend", SDC.rir_trend, ds.forms),
+                cls="grid two mt"),
+            Div(
                 _chart("Forms by Type", SDC.form_types_chart, ds.formtypes, ds.forms),
                 cls="mt"),
             Div(id="sd-forms-list"),
@@ -958,6 +898,7 @@ def render_sd_section(section_key):
 
     elif section_key == "compliance":
         sched_c = SD.schedule_counts(ds.schedules)
+        brc = SD.bbso_rir_counts(ds.forms)
         cards = [
             kpi_card("Completion Rate", sched_c["completion_pct"], "%",
                      rag=rag_for_value(sched_c["completion_pct"], 80, 60)),
@@ -965,15 +906,24 @@ def render_sd_section(section_key):
                      rag=rag_for_value(sched_c["overdue"], 5, 15, False)),
             kpi_card("Late", float(sched_c["late"]), ""),
             kpi_card("Cancelled", float(sched_c["cancelled"]), ""),
+            kpi_card("BBSO This Month", float(brc["bbso_this_month"]), "",
+                     hint=f"{brc['total_bbso']} total"),
+            kpi_card("RIR This Month", float(brc["rir_this_month"]), "",
+                     hint=f"{brc['total_rir']} total"),
         ]
         return (
             H2("Compliance"),
             kpi_grid(cards),
             Div(
                 _chart("Schedule Compliance", SDC.schedule_compliance, ds.schedules),
-                _chart("Forms Trend", SDC.forms_trend, ds.forms),
+                _chart("Monthly BBSO Trend", SDC.bbso_trend, ds.forms),
                 cls="grid two"),
             Div(
+                _chart("Monthly RIR / Near Miss Trend", SDC.rir_trend, ds.forms),
+                _chart("Forms Trend", SDC.forms_trend, ds.forms),
+                cls="grid two mt"),
+            Div(
+                _chart("BBSO & RIR by Worker", SDC.bbso_rir_leaderboard_table, ds.workers, ds.forms),
                 _chart("Overdue & Late Items", SDC.overdue_items_list, ds.schedules),
                 cls="mt"),
         )
@@ -983,6 +933,7 @@ def render_sd_section(section_key):
     elif section_key == "workers":
         w_count = SD.worker_counts(ds.workers)
         part = SD.worker_participation(ds.workers, ds.forms)
+        brc = SD.bbso_rir_counts(ds.forms)
         cards = [
             kpi_card("Active Workers", float(w_count["active"]), "",
                      hint=f"of {w_count['total']} total"),
@@ -990,6 +941,10 @@ def render_sd_section(section_key):
                      hint=f"{w_count['employees']} employees"),
             kpi_card("Participation", part["pct"], "%",
                      rag=rag_for_value(part["pct"], 80, 60)),
+            kpi_card("BBSO Contributors", float(brc["bbso_contributors"]), "",
+                     hint=f"{brc['total_bbso']} total BBSOs"),
+            kpi_card("RIR Contributors", float(brc["rir_contributors"]), "",
+                     hint=f"{brc['total_rir']} total RIRs"),
         ]
         return (
             H2("Workers"),
@@ -999,86 +954,14 @@ def render_sd_section(section_key):
                 _chart("Employee vs Contractor", SDC.worker_type_split, ds.workers),
                 cls="grid two"),
             Div(
+                _chart("BBSO & RIR by Worker", SDC.bbso_rir_leaderboard_table, ds.workers, ds.forms),
                 _chart("Worker Activity", SDC.worker_leaderboard_table, ds.workers, ds.forms, ds.signatures, ds.schedules),
-                cls="mt"),
+                cls="grid two mt"),
         )
-
-
-
-
-
-
-
-
 
 
 
     return Div(H2("SiteDocs"), Div("Section not found.", cls="chart-empty"))
-
-
-def render_gt_section(section_key):
-    """Render a GeoTab sub-tab."""
-    conn = _cached("gt", load_gt)
-    if not conn:
-        return Div(H2("GeoTab Fleet"), Div("No data available.", cls="chart-empty"), cls="mt")
-
-    from charts import gt_charts as GTC
-
-    try:
-        now = datetime.now(timezone.utc)
-        since_365 = now - timedelta(days=365)
-        db = conn
-
-        summary = GT.gt_fleet_summary(db, since_365, now)
-        trends = GT.gt_daily_trends(db, since_365, now)
-        speed = GT.gt_speed_analysis(db, since_365, now)
-        vehicle_util = GT.gt_vehicle_utilization(db, since_365, now)
-        idling = GT.gt_idling_summary(db, since_365, now)
-        locations = GT.gt_latest_locations(db)
-
-        gt_data = {
-            "summary": summary,
-            "trends": trends,
-            "speed": speed,
-            "vehicle_util": vehicle_util,
-            "idling": idling,
-            "locations": locations,
-        }
-
-        db.close()
-
-        kpis_html = GTC.fleet_kpi_row(gt_data)
-
-        return (
-            H2("GeoTab Fleet Overview"),
-            NotStr(kpis_html),
-            Div(
-                _chart("Daily Mileage Trend", GTC.daily_mileage_chart, gt_data),
-                _chart("Daily Trip Count", GTC.trip_count_chart, gt_data),
-                cls="grid two"),
-            Div(
-                _chart("Vehicle Utilization", GTC.vehicle_utilization_chart, gt_data),
-                _chart("Vehicle Details", GTC.vehicle_table, gt_data),
-                cls="grid two mt"),
-            Div(
-                _chart("Speed Distribution", GTC.speed_distribution_chart, gt_data),
-                _chart("Idle Time by Vehicle", GTC.idle_time_chart, gt_data),
-                cls="grid two mt"),
-            Div(
-                _chart("Fleet Locations", GTC.fleet_map, gt_data),
-                cls="mt"),
-            Div(
-                H3("Driver Activity"),
-                NotStr(_driver_table(gt_data.get("drivers", []))),
-                cls="panel mt") if gt_data.get("drivers") else "",
-        )
-    except Exception as e:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
-        return Div(H2("GeoTab Fleet"), Div(f"Error loading data: {e}", cls="chart-empty"), cls="mt")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────
@@ -1090,7 +973,7 @@ async def health(req):
 
 @rt("/_dbcheck")
 async def db_check(req):
-    """Diagnostic - checks all three DB connections and lists tables."""
+    """Diagnostic - checks both DB connections and lists tables."""
     import traceback
     from sqlalchemy import create_engine, text
 
@@ -1114,8 +997,6 @@ async def db_check(req):
         try_connect("QB", "QB_DATABASE_URL"),
         "",
         try_connect("SD", "SD_DATABASE_URL"),
-        "",
-        try_connect("GT", "GT_DATABASE_URL"),
     ]
     return Pre("\n".join(lines))
 
@@ -1166,323 +1047,6 @@ async def login(req):
         ),
         style="max-width:400px;margin:0 auto;padding:40px 20px;"
     )
-
-
-@rt("/_gt_check")
-async def gt_check(req):
-    """Diagnostic: show GT vehicle-driver relationships from the actual data."""
-    from sqlalchemy import text
-    try:
-        db = load_gt()
-        out = []
-        
-        # Check trips with/without driver_id
-        r = db.execute(text("SELECT COUNT(*) as total, COUNT(driver_id) as with_driver, COUNT(*) - COUNT(driver_id) as no_driver FROM trips"))
-        row = r.one()
-        out.append(f"Trips: {row.total} total, {row.with_driver} with driver, {row.no_driver} without driver")
-        
-        # Sample trips with driver info
-        r = db.execute(text("""
-            SELECT t.id, t.vehicle_id, t.driver_id, d.name as driver_name,
-                   v.license_plate, v.vin
-            FROM trips t
-            LEFT JOIN drivers d ON d.id = t.driver_id
-            LEFT JOIN vehicles v ON v.id = t.vehicle_id
-            WHERE t.driver_id IS NOT NULL
-            LIMIT 10
-        """))
-        out.append("\n\nTrips WITH driver (sample 10):")
-        for row in r:
-            out.append(f"  Trip {row.id}: vehicle={row.vehicle_id} ({row.license_plate or row.vin}), driver={row.driver_id} ({row.driver_name or '?'})")
-        
-        # Top vehicles by driver count (vehicles with most distinct drivers)
-        r = db.execute(text("""
-            SELECT v.id, v.license_plate, v.vin,
-                   COUNT(DISTINCT t.driver_id) as num_drivers,
-                   COUNT(*) as trip_count
-            FROM trips t
-            JOIN vehicles v ON v.id = t.vehicle_id
-            WHERE t.driver_id IS NOT NULL
-            GROUP BY v.id
-            ORDER BY num_drivers DESC
-            LIMIT 10
-        """))
-        out.append("\n\nVehicles with most distinct drivers:")
-        for row in r:
-            out.append(f"  Vehicle {row.id}: {row.license_plate or row.vin} — {row.num_drivers} drivers, {row.trip_count} trips")
-        
-        # Check if any trips have driver_id = NULL
-        r = db.execute(text("""
-            SELECT COUNT(*) as null_count
-            FROM trips
-            WHERE driver_id IS NULL
-        """))
-        null_count = r.scalar()
-        out.append(f"\n\nTrips with NULL driver_id: {null_count}")
-        
-        # Check if drivers table has any records
-        r = db.execute(text("SELECT COUNT(*) FROM drivers"))
-        out.append(f"\nTotal drivers in DB: {r.scalar()}")
-        
-        # Check if vehicles table has any records
-        r = db.execute(text("SELECT COUNT(*) FROM vehicles"))
-        out.append(f"\nTotal vehicles in DB: {r.scalar()}")
-        
-        # Show all drivers
-        r = db.execute(text("SELECT id, name, geotab_id, employee_id FROM drivers LIMIT 20"))
-        out.append("\n\nAll drivers:")
-        for row in r:
-            out.append(f"  Driver {row.id}: {row.name} (geotab={row.geotab_id}, emp={row.employee_id})")
-        
-        db.close()
-        return Pre("\n".join(out))
-    except Exception as e:
-        import traceback
-        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
-
-
-@rt("/_gt_sync_now")
-async def gt_sync_now(req):
-    """One-shot: sync all Geotab users into drivers table."""
-    from sqlalchemy import text
-    import requests
-    try:
-        # Get Geotab credentials
-        gt_db = os.getenv("GEOTAB_DATABASE")
-        gt_user = os.getenv("GEOTAB_USERNAME")
-        gt_pass = os.getenv("GEOTAB_PASSWORD")
-        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
-        
-        if not all([gt_db, gt_user, gt_pass]):
-            return Pre("ERROR: GEOTAB_DATABASE, GEOTAB_USERNAME, GEOTAB_PASSWORD must be set as env vars")
-        
-        # Authenticate with Geotab API
-        base = f"https://{gt_server}/apiv1"
-        auth_resp = requests.post(base, json={
-            "method": "Authenticate",
-            "params": {
-                "database": gt_db,
-                "userName": gt_user,
-                "password": gt_pass,
-            }
-        }, timeout=30)
-        auth_data = auth_resp.json()
-        if "error" in auth_data:
-            return Pre(f"Geotab API auth error: {auth_data['error']}")
-        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
-        
-        # Fetch all Users
-        get_resp = requests.post(base, json={
-            "method": "Get",
-            "params": {
-                "typeName": "User",
-                "credentials": creds,
-                "resultsLimit": 50000,
-            }
-        }, timeout=60)
-        get_data = get_resp.json()
-        users = get_data.get("result", []) if isinstance(get_data.get("result"), list) else []
-        
-        # Insert into drivers table
-        db = load_gt()
-        inserted = 0
-        for u in users:
-            uid = str(u.get("id", ""))
-            first = u.get("firstName", "")
-            last = u.get("lastName", "")
-            name = u.get("name") or f"{first} {last}".strip() or uid
-            emp = u.get("employeeNo") or u.get("employeeId") or ""
-            db.execute(text(
-                "INSERT INTO drivers (geotab_id, name, employee_id, created_at, updated_at) "
-                "VALUES (:gid, :name, :emp, NOW(), NOW()) "
-                "ON CONFLICT (geotab_id) DO UPDATE SET name=:name2, employee_id=:emp2, updated_at=NOW()"
-            ), {"gid": uid, "name": name, "emp": emp, "name2": name, "emp2": emp})
-            inserted += 1
-        db.commit()
-        db.close()
-        return Pre(f"Synced {inserted} users into drivers table.")
-    except Exception as e:
-        import traceback
-        return Pre(f"Error: {e}\n{traceback.format_exc()}")
-
-
-@rt("/_gt_inspect_trip")
-async def gt_inspect_trip(req):
-    """Show sample raw trip data from Geotab API to check driver field."""
-    import requests, json
-    try:
-        gt_db = os.getenv("GEOTAB_DATABASE")
-        gt_user = os.getenv("GEOTAB_USERNAME")
-        gt_pass = os.getenv("GEOTAB_PASSWORD")
-        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
-        if not all([gt_db, gt_user, gt_pass]):
-            return Pre("ERROR: missing Geotab credentials")
-
-        base = f"https://{gt_server}/apiv1"
-        auth_resp = requests.post(base, json={
-            "method": "Authenticate",
-            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
-        }, timeout=30)
-        auth_data = auth_resp.json()
-        if "error" in auth_data:
-            return Pre(f"Auth error: {auth_data['error']}")
-        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
-
-        import datetime
-        now = datetime.datetime.now(datetime.timezone.utc)
-        since = now - datetime.timedelta(days=7)
-        
-        # Fetch just 3 trips to inspect
-        get_resp = requests.post(base, json={
-            "method": "Get",
-            "params": {
-                "typeName": "Trip",
-                "credentials": creds,
-                "search": {"fromDate": since.isoformat().replace("+00:00", "Z")},
-                "resultsLimit": 3,
-            }
-        }, timeout=60)
-        raw = get_resp.json()
-        trips = raw.get("result", [])
-        if not trips:
-            # Try without date filter
-            get_resp = requests.post(base, json={
-                "method": "Get",
-                "params": {"typeName": "Trip", "credentials": creds, "resultsLimit": 3}
-            }, timeout=60)
-            raw = get_resp.json()
-            trips = raw.get("result", [])
-        
-        out = []
-        out.append(f"Total trips returned: {len(trips)}")
-        for i, t in enumerate(trips):
-            out.append(f"\n--- Trip {i+1} ---")
-            out.append(f"ID: {t.get('id')}")
-            out.append(f"device: {t.get('device')}")
-            out.append(f"driver: {t.get('driver')}")
-            # Show all keys
-            out.append(f"All keys: {', '.join(sorted(t.keys()))}")
-            # Show relevant values
-            for key in ['start', 'stop', 'distance', 'idlingDuration']:
-                out.append(f"  {key}: {t.get(key)}")
-        
-        return Pre("\n".join(out))
-    except Exception as e:
-        import traceback
-        return Pre(f"Error: {e}\n{traceback.format_exc()}")
-
-@rt("/_gt_resync_trips")
-async def gt_resync_trips(req):
-    """Re-fetch all trips from Geotab to populate driver_id on existing records."""
-    from sqlalchemy import text
-    import requests
-    try:
-        gt_db = os.getenv("GEOTAB_DATABASE")
-        gt_user = os.getenv("GEOTAB_USERNAME")
-        gt_pass = os.getenv("GEOTAB_PASSWORD")
-        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
-        if not all([gt_db, gt_user, gt_pass]):
-            return Pre("ERROR: missing Geotab credentials")
-
-        base = f"https://{gt_server}/apiv1"
-        auth_resp = requests.post(base, json={
-            "method": "Authenticate",
-            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
-        }, timeout=30)
-        auth_data = auth_resp.json()
-        if "error" in auth_data:
-            return Pre(f"Auth error: {auth_data['error']}")
-        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
-
-        # Fetch trips from Geotab (30 days lookback, since DB shows trips up to June 23)
-        import json
-        import datetime
-        now = datetime.datetime.now(datetime.timezone.utc)
-        since = now - datetime.timedelta(days=60)
-        get_resp = requests.post(base, json={
-            "method": "Get",
-            "params": {
-                "typeName": "Trip",
-                "credentials": creds,
-                "search": {"fromDate": since.isoformat().replace("+00:00", "Z")},
-                "resultsLimit": 50000,
-            }
-        }, timeout=120)
-        raw = get_resp.json()
-        trips_raw = raw.get("result", [])
-        if not isinstance(trips_raw, list):
-            return Pre(f"Unexpected response: {json.dumps(raw)[:500]}")
-
-        # Build driver geotab_id -> DB id map
-        db = load_gt()
-        driver_rows = db.execute(text("SELECT id, geotab_id FROM drivers")).all()
-        driver_map = {r.geotab_id: r.id for r in driver_rows}
-        
-        # Build vehicle geotab_id -> DB id map
-        vehicle_rows = db.execute(text("SELECT id, geotab_id FROM vehicles")).all()
-        vehicle_map = {v.geotab_id: v.id for v in vehicle_rows}
-
-        updated = 0
-        skipped = 0
-        for trip in trips_raw:
-            trip_id = str(trip.get("id", ""))
-            if not trip_id:
-                continue
-            # Extract driver from trip - Geotab returns "driver": {"id": "b3AE"}
-            driver_raw = trip.get("driver")
-            driver_geotab = None
-            if isinstance(driver_raw, dict):
-                driver_geotab = str(driver_raw.get("id", ""))
-            elif driver_raw:
-                driver_geotab = str(driver_raw)
-            driver_db_id = driver_map.get(driver_geotab) if driver_geotab else None
-
-            # Extract vehicle
-            device_raw = trip.get("device")
-            vehicle_geotab = None
-            if isinstance(device_raw, dict):
-                vehicle_geotab = str(device_raw.get("id", ""))
-            vehicle_db_id = vehicle_map.get(vehicle_geotab) if vehicle_geotab else None
-
-            if not vehicle_db_id:
-                skipped += 1
-                continue
-
-            db.execute(text(
-                "UPDATE trips SET driver_id=:did, vehicle_id=:vid "
-                "WHERE geotab_trip_id=:tid"
-            ), {"did": driver_db_id, "vid": vehicle_db_id, "tid": trip_id})
-            updated += 1
-
-        db.commit()
-        db.close()
-        return Pre(f"Processed {len(trips_raw)} trips from Geotab. Updated {updated} (skipped {skipped} no-vehicle).")
-    except Exception as e:
-        import traceback
-        return Pre(f"Error: {e}\n{traceback.format_exc()}")
-
-@rt("/_gt_sync_logs")
-async def gt_sync_logs(req):
-    """Show sync log entries from the GT database."""
-    from sqlalchemy import text
-    try:
-        db = load_gt()
-        out = []
-        r = db.execute(text("SELECT entity_name, status, records_processed, started_at, finished_at, message FROM sync_logs ORDER BY started_at DESC LIMIT 20"))
-        out.append("Last 20 sync attempts:")
-        for row in r:
-            msg = (row.message or "")[:80]
-            out.append(f"  {row.entity_name:12s} {row.status:8s} {str(row.records_processed or 0):5s} records  {str(row.started_at)[:19]}  {msg}")
-        r = db.execute(text("SELECT entity_name, last_sync_timestamp FROM sync_metadata ORDER BY entity_name"))
-        out.append("\nSync watermarks:")
-        for row in r:
-            out.append(f"  {row.entity_name:12s} last: {str(row.last_sync_timestamp)[:19]}")
-        db.close()
-        return Pre("\n".join(out))
-    except Exception as e:
-        import traceback
-        return Pre(f"Error: {e}")
-
 
 
 @rt("/_sd_forms")
@@ -1557,9 +1121,6 @@ async def index(req):
     elif platform == "sd":
         content = render_sd_section(section or "hse")
         title = f"SiteDocs - {section.title()}"
-    elif platform == "gt":
-        content = render_gt_section(section or "fleet")
-        title = "GeoTab Fleet"
     else:
         content = render_overview(req.query_params.get("range", "ytd"))
         title = "Overview"
@@ -1585,9 +1146,6 @@ async def view_section(req):
 
     if platform == "sd":
         return tuple(render_sd_section(section))
-
-    if platform == "gt":
-        return tuple(render_gt_section(section))
 
     return Div("Unknown platform", cls="chart-empty")
 

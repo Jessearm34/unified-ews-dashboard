@@ -460,3 +460,79 @@ def reporter_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> st
         </tr>""")
     header = """<tr><th>Reporter</th><th class='num'>RIRs / Near Misses</th><th>Last</th></tr>"""
     return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""
+
+
+# --------------------------------------------------------------------------- #
+# Form-response-level BBSO/RIR detail tables
+# --------------------------------------------------------------------------- #
+
+
+def bbso_category_safety_table(responses: pd.DataFrame) -> str:
+    """Safe vs At-Risk breakdown by category (GroupTitle) from BBSO form responses."""
+    df = D.bbso_at_risk_by_category(responses)
+    if df.empty:
+        return empty("No BBSO category data yet — run the form_responses pipeline first")
+
+    rows = []
+    for _, r in df.iterrows():
+        pct = r["SafePct"]
+        cls = "badge green" if pct >= 90 else ("badge warn" if pct >= 70 else "badge red")
+        bar_w = min(int(pct), 100)
+        bar = (f"<div style='background:#e2e8f0;border-radius:4px;height:10px;width:100px;display:inline-block;vertical-align:middle;'>"
+               f"<div style='background:{'#16a34a' if pct >= 80 else '#ea580c' if pct >= 60 else '#dc2626'};"
+               f"width:{bar_w}%;height:10px;border-radius:4px;'></div></div>")
+        rows.append(f"""<tr>
+            <td>{r['Category']}</td>
+            <td class='num'>{int(r['Safe'])}</td>
+            <td class='num'>{int(r['AtRisk'])}</td>
+            <td class='num'>{bar} <span class='{cls}'>{pct:.0f}%</span></td>
+        </tr>""")
+    header = """<tr><th>Category</th><th class='num'>Safe</th><th class='num'>At-Risk</th><th class='num'>Safe %</th></tr>"""
+    note = ("<div class='note' style='margin-top:8px'><strong>How to read:</strong> "
+            "Categories with low Safe % are where coaching should focus. "
+            "Click forms tab for drill-down.</div>")
+    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}
+    </tbody></table></div>{note}"""
+
+
+def bbso_recent_at_risk_table(responses: pd.DataFrame, workers: pd.DataFrame) -> str:
+    """Most recent at-risk observations with context: who, when, what task, what was wrong."""
+    df = D.bbso_recent_at_risk(responses, workers, limit=12)
+    if df.empty:
+        return empty("No recent at-risk observations")
+
+    rows = []
+    for _, r in df.iterrows():
+        comments = r["Comments"]
+        comment_html = f"<br><span class='note'>{comments[:120]}</span>" if comments and comments.strip() else ""
+        rows.append(f"""<tr>
+            <td>{r['Worker']}</td>
+            <td>{r['Date']}</td>
+            <td>{str(r['Task'])[:40]}</td>
+            <td>{r['Category']}</td>
+            <td>{r['Observation']}{comment_html}</td>
+        </tr>""")
+    header = """<tr><th>Observer</th><th>Date</th><th>Task</th><th>Category</th><th>At-Risk Observation</th></tr>"""
+    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""
+
+
+def rir_events_table(responses: pd.DataFrame, workers: pd.DataFrame) -> str:
+    """Recent RIR/Near Miss events with what happened, severity, root cause, action."""
+    df = D.rir_recent_events(responses, workers, limit=10)
+    if df.empty:
+        return empty("No RIR/Near Miss events recorded")
+
+    rows = []
+    for _, r in df.iterrows():
+        sev = r["Severity"]
+        sev_cls = "badge red" if "high" in sev.lower() else ("badge warn" if "medium" in sev.lower() else "badge")
+        rows.append(f"""<tr>
+            <td>{r['Worker']}</td>
+            <td>{r['Date']}</td>
+            <td>{str(r['WhatHappened'])[:60]}</td>
+            <td><span class='{sev_cls}'>{sev[:20]}</span></td>
+            <td>{str(r['RootCause'])[:50]}</td>
+            <td>{str(r['Action'])[:50]}</td>
+        </tr>""")
+    header = """<tr><th>Reporter</th><th>Date</th><th>What Happened</th><th>Severity</th><th>Root Cause</th><th>Action</th></tr>"""
+    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""

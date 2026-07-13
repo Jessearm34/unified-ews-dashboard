@@ -45,6 +45,7 @@ class SdDataset:
     locations: pd.DataFrame = field(default_factory=pd.DataFrame)
     formtypes: pd.DataFrame = field(default_factory=pd.DataFrame)
     schedules: pd.DataFrame = field(default_factory=pd.DataFrame)
+    form_responses: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @property
     def has_data(self) -> bool:
@@ -93,6 +94,7 @@ def sd_load_dataset() -> SdDataset:
     locations = safe_read("sitedocs_locations")
     formtypes = safe_read("sitedocs_formtypes")
     schedules = safe_read("sitedocs_schedules")
+    form_responses = safe_read("sitedocs_form_responses")
 
     if not workers.empty:
         # Parse date columns
@@ -125,6 +127,7 @@ def sd_load_dataset() -> SdDataset:
         locations=locations,
         formtypes=formtypes,
         schedules=schedules,
+        form_responses=form_responses,
     )
     _DATASET_CACHE = ds
     _CACHE_TIMESTAMP = now
@@ -887,3 +890,177 @@ def bbso_rir_safety_profile(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.Da
     if df.empty:
         return pd.DataFrame(columns=["Worker", "BBSOs", "RIRs", "Engagement", "Role", "Profile"])
     return df.sort_values("Engagement", ascending=False).reset_index(drop=True)
+
+
+# --------------------------------------------------------------------------- #
+# Form response analysis (from sitedocs_form_responses table)
+# --------------------------------------------------------------------------- #
+
+def bbso_responses(responses: pd.DataFrame) -> pd.DataFrame:
+    """Filter to BBSO form responses only."""
+    if responses.empty:
+        return pd.DataFrame()
+    return responses[responses["FormType"].str.upper().str.strip() == "BBSO"].copy()
+
+
+def rir_responses(responses: pd.DataFrame) -> pd.DataFrame:
+    """Filter to RIR/Near Miss form responses only."""
+    if responses.empty:
+        return pd.DataFrame()
+    return responses[
+        responses["FormType"].str.contains("RIR|Near Miss", na=False)
+    ].copy()
+
+
+def bbso_at_risk_by_category(responses: pd.DataFrame) -> pd.DataFrame:
+    """Per-category (GroupTitle) count of safe vs at-risk observations from BBSO forms.
+
+    Returns columns: [Category, Safe, AtRisk, Total, SafePct]
+    Categories are the form groups (PPE, Line of Fire, Housekeeping, etc.)
+    """
+    bbso = bbso_responses(responses)
+    if bbso.empty:
+        return pd.DataFrame(columns=["Category", "Safe", "AtRisk", "Total", "SafePct"])
+
+    # Filter to items that are YesNo type (safe/at-risk indicators)
+    # Also include PassFailCounter and Inspection types
+    qa = bbso[bbso["ItemType"].isin(["YesNo", "PassFailCounter", "Inspection"])].copy()
+    if qa.empty:
+        return pd.DataFrame(columns=["Category", "Safe", "AtRisk", "Total", "SafePct"])
+
+    # Skip the "Task Information" group — it's metadata, not a safety category
+    qa = qa[qa["GroupTitle"] != "Task Information"]
+
+    def classify(val: str) -> str:
+        v = str(val).strip().lower()
+        if v in ("yes", "pass", "true", "safe", "1"):
+            return "Safe"
+        return "AtRisk"
+
+    qa["_verdict"] = qa["ItemValue"].apply(classify)
+    groups = qa.groupby(["GroupTitle", "_verdict"]).size().unstack(fill_value=0)
+    for col in ("Safe", "AtRisk"):
+        if col not in groups.columns:
+            groups[col] = 0
+    groups = groups.rename(columns={"Safe": "Safe", "AtRisk": "AtRisk"})
+    groups = groups.reset_index()
+    groups["Total"] = groups["Safe"] + groups["AtRisk"]
+    groups["SafePct"] = (groups["Safe"] / groups["Total"] * 100).round(1)
+    return groups.rename(columns={"GroupTitle": "Category"})\
+        .sort_values("Total", ascending=False).reset_index(drop=True)
+
+
+def bbso_tasks_observed(responses: pd.DataFrame) -> pd.DataFrame:
+    """Extract unique task descriptions from BBSO forms.
+
+    Returns columns: [FormId, ObserverId, Task, CreatedOn]
+    Task descriptions come from the "Task Information" group (What task? question).
+    """
+    bbso = bbso_responses(responses)
+    if bbso.empty:
+        return pd.DataFrame(columns=["FormId", "ObserverId", "Task", "CreatedOn"])
+
+    task_rows = bbso[
+        (bbso["GroupTitle"] == "Task Information")
+        & (bbso["ItemContent"].str.contains("task", case=False, na=False))
+    ].copy()
+    if task_rows.empty:
+        return pd.DataFrame(columns=["FormId", "ObserverId", "Task", "CreatedOn"])
+
+    result = task_rows[["FormId", "CreatedBy", "ItemValue", "CreatedOn"]]\
+        .rename(columns={"CreatedBy": "ObserverId", "ItemValue": "Task"})
+    return result.drop_duplicates(subset=["FormId"]).reset_index(drop=True)
+
+
+def bbso_recent_at_risk(responses: pd.DataFrame, workers: pd.DataFrame,
+                         limit: int = 15) -> pd.DataFrame:
+    """Most recent BBSO at-risk observations with worker names and comments.
+
+    Returns columns: [Worker, Date, Task, Category, Observation, Comments]
+    """
+    bbso = bbso_responses(responses)
+    if bbso.empty or workers.empty:
+        return pd.DataFrame(columns=["Worker", "Date", "Task", "Category", "Observation", "Comments"])
+
+    # Filter to at-risk items
+    qa = bbso[bbso["ItemType"].isin(["YesNo", "PassFailCounter", "Inspection"])].copy()
+    if qa.empty:
+        return pd.DataFrame(columns=["Worker", "Date", "Task", "Category", "Observation", "Comments"])
+
+    at_risk = qa[qa["ItemValue"].str.lower().isin(["no", "fail", "false", "0"])].copy()
+    if at_risk.empty:
+        return pd.DataFrame(columns=["Worker", "Date", "Task", "Category", "Observation", "Comments"])
+
+    # Parse dates
+    at_risk["_date"] = pd.to_datetime(at_risk["CreatedOn"], errors="coerce")
+    at_risk = at_risk.dropna(subset=["_date"])
+
+    # Get task descriptions per form
+    tasks = bbso_tasks_observed(responses)
+    task_map = dict(zip(tasks["FormId"], tasks["Task"]))
+
+    # Resolve worker names
+    workers_map = {str(w["Id"]): f"{w.get('FirstName','')} {w.get('LastName','')}".strip()
+                   for _, w in workers.iterrows()}
+
+    result = at_risk.sort_values("_date", ascending=False).head(limit).copy()
+    result["Task"] = result["FormId"].map(task_map).fillna("—")
+    result["Worker"] = result["CreatedBy"].map(workers_map).fillna(result["CreatedBy"].str[:8])
+    result["Date"] = result["_date"].dt.strftime("%b %d")
+
+    return result[["Worker", "Date", "Task", "GroupTitle", "ItemContent", "Comments"]]\
+        .rename(columns={"GroupTitle": "Category", "ItemContent": "Observation"})\
+        .reset_index(drop=True)
+
+
+def rir_recent_events(responses: pd.DataFrame, workers: pd.DataFrame,
+                       limit: int = 10) -> pd.DataFrame:
+    """Most recent RIR/Near Miss events with details.
+
+    Returns columns: [Worker, Date, WhatHappened, Severity, RootCause, Action]
+    """
+    rir = rir_responses(responses)
+    if rir.empty or workers.empty:
+        return pd.DataFrame(columns=["Worker", "Date", "WhatHappened", "Severity", "RootCause", "Action"])
+
+    # Group by FormId to pivot
+    workers_map = {str(w["Id"]): f"{w.get('FirstName','')} {w.get('LastName','')}".strip()
+                   for _, w in workers.iterrows()}
+
+    rows = []
+    for form_id, group in rir.groupby("FormId"):
+        what = ""
+        severity = ""
+        root_cause = ""
+        action = ""
+        created_by = group["CreatedBy"].iloc[0] if "CreatedBy" in group.columns else ""
+        created_on = group["CreatedOn"].iloc[0] if "CreatedOn" in group.columns else ""
+
+        for _, r in group.iterrows():
+            item = str(r.get("ItemContent", "")).lower()
+            val = r.get("ItemValue", "")
+            if "happened" in item or "describe" in item:
+                what = val
+            elif "severity" in item or "potential" in item:
+                severity = val
+            elif "root cause" in item:
+                root_cause = val
+            elif "action" in item or "corrective" in item:
+                action = val
+
+        rows.append({
+            "FormId": form_id,
+            "Worker": workers_map.get(created_by, created_by[:8]),
+            "Date": str(created_on)[:10],
+            "WhatHappened": what,
+            "Severity": severity,
+            "RootCause": root_cause,
+            "Action": action,
+        })
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["Worker", "Date", "WhatHappened", "Severity", "RootCause", "Action"])
+    df["_dt"] = pd.to_datetime(df["Date"], errors="coerce")
+    return df.sort_values("_dt", ascending=False).head(limit)\
+        .drop(columns=["_dt", "FormId"]).reset_index(drop=True)

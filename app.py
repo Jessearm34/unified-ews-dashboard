@@ -890,6 +890,30 @@ def render_sd_section(section_key):
                 ),
                 cls="grid two mt",
             ),
+            # ── Activity-Level Detail (from form_responses) ──
+            H3("📋 Safety Observations — What's Actually Being Seen",
+               style="margin:20px 0 8px;font-size:15px;font-weight:700;"),
+            Div(
+                Div(
+                    H3("Category Safety", Span("Safe vs at-risk by type", cls="note", style="font-weight:400;font-size:11px;")),
+                    NotStr(SDC.bbso_category_safety_table(ds.form_responses)),
+                    cls="panel",
+                ),
+                Div(
+                    H3("Recent At-Risk Observations", Span("Latest coaching opportunities", cls="note", style="font-weight:400;font-size:11px;")),
+                    NotStr(SDC.bbso_recent_at_risk_table(ds.form_responses, ds.workers)),
+                    cls="panel",
+                ),
+                cls="grid two mt",
+            ),
+            Div(
+                Div(
+                    H3("⚠️ Recent RIR / Near Miss Events"),
+                    NotStr(SDC.rir_events_table(ds.form_responses, ds.workers)),
+                    cls="panel",
+                ),
+                cls="mt",
+            ) if hasattr(ds, 'form_responses') and not ds.form_responses.empty else "",
             # ── Trend charts ──
             H3("Trends Over Time", style="margin:20px 0 8px;font-size:15px;font-weight:700;"),
             Div(

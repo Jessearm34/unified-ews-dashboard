@@ -545,6 +545,7 @@ def render_overview(range_key="all"):
         parts.append(Div(id="sd-forms-list"))
     return tuple(parts)
 
+
 # ── Safe data loaders with app-level cache ────────────────────────────────
 
 _data_cache = {}
@@ -590,14 +591,15 @@ def load_sd():
 # ── Platform section renderers ─────────────────────────────────────────────
 
 
-
 def _chart(label, fn, *args, **kw):
     """Render a chart. Returns empty string if chart has nothing to show."""
     try:
         html = fn(*args, **kw)
         if not html or 'chart-empty' in str(html) or 'No data' in str(html) or 'No schedule' in str(html):
             return ""
-        return Div(H3(label), NotStr(html), cls="panel")
+        if label:
+            return Div(H3(label), NotStr(html), cls="panel")
+        return Div(NotStr(html), cls="panel")
     except Exception:
         return ""
 
@@ -841,28 +843,70 @@ def render_sd_section(section_key):
                      rag=rag_for_value(sched_c["completion_pct"], 80, 60)),
             kpi_card("Overdue Items", float(sched_c["overdue"]), "",
                      rag=rag_for_value(sched_c["overdue"], 5, 15, False)),
-            kpi_card("BBSO", float(brc["total_bbso"]), "",
-                     hint=f"{brc['bbso_this_month']} this month · {brc['bbso_contributors']} workers"),
-            kpi_card("RIR / Near Miss", float(brc["total_rir"]), "",
-                     hint=f"{brc['rir_this_month']} this month · {brc['rir_contributors']} workers"),
+            kpi_card("BBSO Observations", float(brc["total_bbso"]), "",
+                     hint=f"{brc['bbso_this_month']} this month · {brc['bbso_contributors']} observers"),
+            kpi_card("RIR / Near Miss Reports", float(brc["total_rir"]), "",
+                     hint=f"{brc['rir_this_month']} this month · {brc['rir_contributors']} reporters"),
             kpi_card("Worker Participation", part["pct"], "%",
                      rag=rag_for_value(part["pct"], 80, 60)),
         ]
+        # Context note explaining leading vs lagging
+        context_note = Div(
+            Div(
+                Span("💡", style="font-size:16px;margin-right:8px;"),
+                Span("BBSO observations", style="font-weight:700;"),
+                Span(" measure proactive safety behavior (leading indicator). "),
+                Span("RIR / Near Miss reports", style="font-weight:700;"),
+                Span(" capture events that almost caused harm. "),
+                Span("Use the person-level table below to see who's engaged vs who needs coaching.", style="color:var(--muted);"),
+                style="font-size:12px;line-height:1.5;",
+            ),
+            style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin:12px 0;",
+        )
         return (
             H2("HSE Overview"),
             kpi_grid(cards),
+            context_note,
+            # ── Person-Level Safety Profile (the key insight) ──
             Div(
-                _chart("Schedule Compliance", SDC.schedule_compliance, ds.schedules),
-                _chart("Forms by Category", SDC.form_category_chart, ds.forms),
-                cls="grid two"),
+                Div(
+                    H3("👤 Safety Profile — Who's Doing What"),
+                    NotStr(SDC.safety_profile_table(ds.workers, ds.forms)),
+                    cls="panel",
+                ),
+                cls="mt",
+            ),
+            # ── Observer vs Reporter side-by-side ──
+            Div(
+                Div(
+                    H3("🔭 Top BBSO Observers", Span("Who submits the most observations?", cls="note", style="font-weight:400;font-size:11px;")),
+                    NotStr(SDC.observer_leaderboard_table(ds.workers, ds.forms)),
+                    cls="panel",
+                ),
+                Div(
+                    H3("⚠️ Top RIR / Near Miss Reporters", Span("Who reports incidents?", cls="note", style="font-weight:400;font-size:11px;")),
+                    NotStr(SDC.reporter_leaderboard_table(ds.workers, ds.forms)),
+                    cls="panel",
+                ),
+                cls="grid two mt",
+            ),
+            # ── Trend charts ──
+            H3("Trends Over Time", style="margin:20px 0 8px;font-size:15px;font-weight:700;"),
             Div(
                 _chart("Monthly BBSO Trend", SDC.bbso_trend, ds.forms),
                 _chart("Monthly RIR / Near Miss Trend", SDC.rir_trend, ds.forms),
-                cls="grid two mt"),
+                cls="grid two",
+            ),
             Div(
                 _chart("BBSO & RIR by Worker", SDC.bbso_rir_leaderboard_table, ds.workers, ds.forms),
                 _chart("Overdue Items", SDC.overdue_items_list, ds.schedules),
-                cls="grid two mt"),
+                cls="grid two mt",
+            ),
+            Div(
+                _chart("Schedule Compliance", SDC.schedule_compliance, ds.schedules),
+                _chart("Forms by Category", SDC.form_category_chart, ds.forms),
+                cls="grid two mt",
+            ),
             Div(id="sd-forms-list"),
         )
 

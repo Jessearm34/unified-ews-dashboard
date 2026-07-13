@@ -732,3 +732,158 @@ def bbso_rir_leaderboard(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.DataF
     if df.empty:
         return pd.DataFrame(columns=["Worker", "BBSO", "RIR", "HSE_Engagement"])
     return df.sort_values("HSE_Engagement", ascending=False).reset_index(drop=True)
+
+
+# --------------------------------------------------------------------------- #
+# Per-person safety profiles: who observes, who reports, who's at risk
+# --------------------------------------------------------------------------- #
+
+def _worker_name(w_row) -> str:
+    """Extract a human name from a worker DataFrame row."""
+    return f"{w_row.get('FirstName','')} {w_row.get('LastName','')}".strip() or f"Worker {w_row.get('Id','')[:8]}"
+
+
+def _created_by_col(forms: pd.DataFrame) -> str | None:
+    """Return the name of the CreatedBy column (case-insensitive), or None."""
+    for col in ("CreatedBy", "createdBy"):
+        if col in forms.columns:
+            return col
+    return None
+
+
+def bbso_observer_leaderboard(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.DataFrame:
+    """Per-person BBSO submission counts — who is actively doing observations.
+
+    ``CreatedBy`` on BBSO forms = the observer/supervisor who performed the
+    observation. High counts = strong observation culture.
+    Returns columns [Worker, BBSOs, LastObservation, Role].
+    """
+    if workers.empty:
+        return pd.DataFrame(columns=["Worker", "BBSOs", "LastObservation", "Role"])
+    bbso = _filter_bbso(forms)
+    col = _created_by_col(bbso)
+    if col is None:
+        return pd.DataFrame(columns=["Worker", "BBSOs", "LastObservation", "Role"])
+    if bbso.empty:
+        return pd.DataFrame(columns=["Worker", "BBSOs", "LastObservation", "Role"])
+
+    active = workers[workers["Active"].astype(bool)] if "Active" in workers.columns else workers
+    now_ts = pd.Timestamp.now()
+    rows = []
+    for _, w in active.iterrows():
+        wid = w["Id"]
+        mask = bbso[col] == wid
+        count = int(mask.sum())
+        if count == 0:
+            continue
+        # Last observation date if available
+        date_col = "CreatedOn" if "CreatedOn" in bbso.columns else "createdOn"
+        if date_col in bbso.columns and mask.any():
+            last = pd.to_datetime(bbso.loc[mask, date_col]).max()
+            last_str = last.strftime("%b %d") if pd.notna(last) else "—"
+        else:
+            last_str = "—"
+        # Employee/contractor label
+        is_ext = bool(w.get("IsExternal", False)) if "IsExternal" in workers.columns else False
+        role = "Contractor" if is_ext else "Employee"
+        rows.append({"Worker": _worker_name(w), "BBSOs": count,
+                      "LastObservation": last_str, "Role": role})
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["Worker", "BBSOs", "LastObservation", "Role"])
+    return df.sort_values("BBSOs", ascending=False).reset_index(drop=True)
+
+
+def rir_reporter_leaderboard(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.DataFrame:
+    """Per-person RIR / Near Miss reporting counts — who reports incidents.
+
+    ``CreatedBy`` on RIR forms = the person who reported the near miss/incident.
+    High counts = good reporting culture, but may indicate the person works in
+    higher-risk areas.
+    Returns columns [Worker, RIRs, LastReport, Role].
+    """
+    if workers.empty:
+        return pd.DataFrame(columns=["Worker", "RIRs", "LastReport", "Role"])
+    rir = _filter_rir(forms)
+    col = _created_by_col(rir)
+    if col is None or rir.empty:
+        return pd.DataFrame(columns=["Worker", "RIRs", "LastReport", "Role"])
+
+    active = workers[workers["Active"].astype(bool)] if "Active" in workers.columns else workers
+    rows = []
+    for _, w in active.iterrows():
+        wid = w["Id"]
+        mask = rir[col] == wid
+        count = int(mask.sum())
+        if count == 0:
+            continue
+        date_col = "CreatedOn" if "CreatedOn" in rir.columns else "createdOn"
+        if date_col in rir.columns and mask.any():
+            last = pd.to_datetime(rir.loc[mask, date_col]).max()
+            last_str = last.strftime("%b %d") if pd.notna(last) else "—"
+        else:
+            last_str = "—"
+        is_ext = bool(w.get("IsExternal", False)) if "IsExternal" in workers.columns else False
+        role = "Contractor" if is_ext else "Employee"
+        rows.append({"Worker": _worker_name(w), "RIRs": count,
+                      "LastReport": last_str, "Role": role})
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["Worker", "RIRs", "LastReport", "Role"])
+    return df.sort_values("RIRs", ascending=False).reset_index(drop=True)
+
+
+def bbso_rir_safety_profile(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.DataFrame:
+    """Combined safety profile per person: BBSOs submitted vs RIRs reported.
+
+    This is the key insight table:
+      - Workers with HIGH BBSOs + LOW RIRs = engaged safety leaders
+      - Workers with LOW BBSOs + HIGH RIRs = at-risk (need coaching or are
+        working in inherently riskier areas)
+      - Workers with HIGH BOTH = active reporters (good culture but may need
+        systemic hazard review)
+      - Workers with LOW BOTH = disengaged from safety process
+
+    Returns columns [Worker, BBSOs, RIRs, Engagement, Role, Profile].
+    """
+    if workers.empty:
+        return pd.DataFrame(columns=["Worker", "BBSOs", "RIRs", "Engagement", "Role", "Profile"])
+    bbso = _filter_bbso(forms)
+    rir = _filter_rir(forms)
+    col = _created_by_col(forms)
+    if col is None:
+        return pd.DataFrame(columns=["Worker", "BBSOs", "RIRs", "Engagement", "Role", "Profile"])
+
+    active = workers[workers["Active"].astype(bool)] if "Active" in workers.columns else workers
+    rows = []
+    for _, w in active.iterrows():
+        wid = w["Id"]
+        b = int((bbso[col] == wid).sum()) if col in bbso.columns else 0
+        r = int((rir[col] == wid).sum()) if col in rir.columns else 0
+        if b == 0 and r == 0:
+            continue
+        # Engagement: weighted by significance — more weight to RIR involvement
+        engagement = round((b * 1.0 + r * 2.0) / 3.0, 1)
+        # Profile classification
+        if b >= 3 and r == 0:
+            profile = "Safety Leader"
+        elif b >= 3 and r <= 1:
+            profile = "Active Observer"
+        elif r >= 3 and b == 0:
+            profile = "Incident-Prone / At Risk"
+        elif r >= 2 and b <= 1:
+            profile = "Needs Coaching"
+        elif b >= 1 and r >= 2:
+            profile = "High-Exposure Area"
+        elif b >= 1 or r >= 1:
+            profile = "Engaged"
+        else:
+            profile = "—"
+        is_ext = bool(w.get("IsExternal", False)) if "IsExternal" in workers.columns else False
+        role = "Contractor" if is_ext else "Employee"
+        rows.append({"Worker": _worker_name(w), "BBSOs": b, "RIRs": r,
+                      "Engagement": engagement, "Role": role, "Profile": profile})
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["Worker", "BBSOs", "RIRs", "Engagement", "Role", "Profile"])
+    return df.sort_values("Engagement", ascending=False).reset_index(drop=True)

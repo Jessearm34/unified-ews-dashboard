@@ -371,3 +371,92 @@ def bbso_rir_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> st
         </tr>""")
     header = """<tr><th>Worker</th><th>BBSO</th><th>RIR</th><th>HSE Engagement</th></tr>"""
     return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""
+
+
+# --------------------------------------------------------------------------- #
+# Per-person safety profile tables
+# --------------------------------------------------------------------------- #
+
+def safety_profile_table(workers: pd.DataFrame, forms: pd.DataFrame) -> str:
+    """Combined BBSO vs RIR per-person table with profile classification.
+
+    The core insight table for safety meetings:
+      - Workers with HIGH BBSO + LOW RIR = safety leaders
+      - Workers with LOW BBSO + HIGH RIR = at-risk / need coaching
+      - Workers with HIGH BOTH = high-exposure area workers (or good reporting)
+    """
+    df = D.bbso_rir_safety_profile(workers, forms)
+    if df.empty:
+        return empty("No person-level safety data yet")
+
+    def profile_badge(profile: str) -> str:
+        badges = {
+            "Safety Leader": "badge green",
+            "Active Observer": "badge green",
+            "Engaged": "badge",
+            "High-Exposure Area": "badge warn",
+            "Needs Coaching": "badge warn",
+            "Incident-Prone / At Risk": "badge red",
+        }
+        cls = badges.get(profile, "badge")
+        return f"<span class='{cls}'>{profile}</span>"
+
+    rows = []
+    for _, r in df.iterrows():
+        eng = r["Engagement"]
+        badge = profile_badge(r["Profile"])
+        rows.append(f"""<tr>
+            <td>{r['Worker']}<br><span class='note'>{r['Role']}</span></td>
+            <td class='num'>{int(r['BBSOs'])}</td>
+            <td class='num'>{int(r['RIRs'])}</td>
+            <td class='num'>{eng}</td>
+            <td>{badge}</td>
+        </tr>""")
+    header = """<tr><th>Worker</th><th class='num'>BBSOs</th><th class='num'>RIRs</th>
+                <th class='num'>Score</th><th>Profile</th></tr>"""
+    note = ("<div class='note' style='margin-top:8px'>"
+            "<strong>How to read:</strong> High BBSOs + Low RIRs = safety leader. "
+            "Low BBSOs + High RIRs = at-risk (needs coaching). "
+            "High BBSOs + High RIRs = working in high-exposure area (good reporting).</div>")
+    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}
+    </tbody></table></div>{note}"""
+
+
+def observer_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> str:
+    """Who's doing BBSO observations — sorted by most observations submitted."""
+    df = D.bbso_observer_leaderboard(workers, forms)
+    if df.empty:
+        return empty("No BBSO observations recorded yet")
+    rows = []
+    for _, r in df.iterrows():
+        name = r["Worker"]
+        bbso_count = int(r["BBSOs"])
+        last = r["LastObservation"]
+        cls = "badge green" if bbso_count >= 5 else ("badge" if bbso_count >= 2 else "badge warn")
+        rows.append(f"""<tr>
+            <td>{name}<br><span class='note'>{r['Role']}</span></td>
+            <td class='num'><span class='{cls}'>{bbso_count}</span></td>
+            <td>{last}</td>
+        </tr>""")
+    header = """<tr><th>Observer</th><th class='num'>BBSOs Done</th><th>Last</th></tr>"""
+    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""
+
+
+def reporter_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> str:
+    """Who's reporting RIRs / Near Misses — sorted by most reports."""
+    df = D.rir_reporter_leaderboard(workers, forms)
+    if df.empty:
+        return empty("No RIR/Near Miss reports recorded yet")
+    rows = []
+    for _, r in df.iterrows():
+        name = r["Worker"]
+        rir_count = int(r["RIRs"])
+        last = r["LastReport"]
+        cls = "badge warn" if rir_count >= 3 else "badge"
+        rows.append(f"""<tr>
+            <td>{name}<br><span class='note'>{r['Role']}</span></td>
+            <td class='num'><span class='{cls}'>{rir_count}</span></td>
+            <td>{last}</td>
+        </tr>""")
+    header = """<tr><th>Reporter</th><th class='num'>RIRs / Near Misses</th><th>Last</th></tr>"""
+    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""

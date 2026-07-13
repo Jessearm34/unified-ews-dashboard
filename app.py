@@ -1139,6 +1139,31 @@ async def sd_forms(req):
     except Exception:
         return Div("")
 
+
+@rt("/_sd_inspect")
+async def sd_inspect(req):
+    """Diagnostic: show the actual columns and sample rows from sitedocs_forms."""
+    try:
+        from data.sd_data import sd_read_table, _filter_bbso, _filter_rir
+        forms = sd_read_table("sitedocs_forms")
+        lines = []
+        lines.append(f"Total rows: {len(forms)}")
+        lines.append(f"Columns ({len(forms.columns)}):")
+        for c in sorted(forms.columns):
+            dtype = str(forms[c].dtype)
+            non_null = forms[c].notna().sum()
+            sample = ""
+            if non_null > 0:
+                val = forms[c].dropna().iloc[0]
+                sample = f"  eg: {str(val)[:80]}"
+            lines.append(f"  {c:40s} {dtype:12s} {non_null:6d} non-null{sample}")
+        lines.append(f"\n── BBSO forms: {len(_filter_bbso(forms))}")
+        lines.append(f"── RIR forms: {len(_filter_rir(forms))}")
+        return Pre("\n".join(lines))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\n{traceback.format_exc()}")
+
 @rt("/logout")
 async def logout(req):
     req.session.clear()

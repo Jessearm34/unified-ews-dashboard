@@ -193,9 +193,13 @@ table.data td.num { text-align: right; }
 .panel .js-plotly-plot { width: 100%; }
 .panel .plot-container { width: 100%; }
 
-/* Fade in content on HTMX swap */
-#content { animation: fadein .25s ease; }
-@keyframes fadein { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+/* Prevent mobile auto-zoom on orientation/scroll */
+html { -webkit-text-size-adjust: 100%; -moz-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { touch-action: pan-y; }
+
+/* Fade in content on HTMX swap — subtle, no layout shift */
+#content { animation: fadein .2s ease; }
+@keyframes fadein { from { opacity:0; } to { opacity:1; } }
 """)
 
 app, rt = fast_app(

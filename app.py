@@ -1433,6 +1433,7 @@ async def sd_lookup(req):
     try:
         from sqlalchemy import text as _text
         from data.sd_data import sd_engine
+        import pandas as _pd
         eng = sd_engine()
         lines = [f"Searching for: {uid}"]
         with eng.connect() as conn:
@@ -1441,28 +1442,23 @@ async def sd_lookup(req):
                 "WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name"
             )).all()
             for (tname,) in tables:
-                cols = conn.execute(_text(
-                    "SELECT column_name FROM information_schema.columns "
-                    f"WHERE table_name='{tname}' AND data_type IN ('text','character varying')"
-                )).all()
-                for (cname,) in cols:
-                    cnt = conn.execute(_text(
-                        f"SELECT COUNT(*) FROM \"{tname}\" WHERE \"{cname}\" = '{uid}'"
-                    )).scalar()
-                    if cnt and cnt > 0:
-                        sample = conn.execute(_text(
-                            f"SELECT * FROM \"{tname}\" WHERE \"{cname}\" = '{uid}' LIMIT 1"
-                        )).fetchone()
-                        name = ""
-                        if sample:
-                            # Build dict from row safely (works with SQLAlchemy 1.x)
-                            keys = [desc[0] for desc in conn.execute(_text(f"SELECT * FROM \"{tname}\" LIMIT 0")).cursor.description]
-                            sd = {k: sample[i] for i, k in enumerate(keys)}
-                            for k in ("Name", "label", "DocumentTemplateName", "Description", "FirstName"):
-                                if k in sd and str(sd[k]).strip():
-                                    name = f" → {str(sd[k])[:60]}"
-                                    break
-                        lines.append(f"  {tname}.{cname}: {cnt} row(s){name}")
+                try:
+                    df = _pd.read_sql(f"SELECT * FROM \"{tname}\"", conn)
+                    for col in df.columns:
+                        if df[col].dtype == 'object':
+                            matches = df[df[col] == uid]
+                            if len(matches) > 0:
+                                # Show first matching row's relevant field
+                                row = matches.iloc[0]
+                                label = ""
+                                for k in ("Name", "label", "DocumentTemplateName", "Description",
+                                          "FirstName", "Title", "LocationName"):
+                                    if k in row and str(row[k]).strip():
+                                        label = f" → {str(row[k])[:80]}"
+                                        break
+                                lines.append(f"  {tname}.{col}: {len(matches)} row(s){label}")
+                except Exception:
+                    pass
             eng.dispose()
         return Pre("\n".join(lines))
     except Exception as e:

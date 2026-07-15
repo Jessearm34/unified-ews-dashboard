@@ -1361,6 +1361,28 @@ async def sd_close_panel(req):
     return Div("")
 
 
+@rt("/_sd_diag_value")
+async def sd_diag_value(req):
+    """Diagnostic: show raw ItemValues from sitedocs_form_responses for debugging."""
+    try:
+        from charts import sd_charts as _sd_charts
+        ds = _cached("sd", load_sd)
+        if not ds or not hasattr(ds, 'form_responses') or ds.form_responses.empty:
+            return Pre("No form_responses data loaded")
+        fr = ds.form_responses.head(20)
+        lines = ["First 20 form_responses rows, raw ItemValues:"]
+        for _, r in fr.iterrows():
+            raw = repr(str(r.get("ItemValue", "")))
+            cleaned = repr(_sd_charts._clean_value(str(r.get("ItemValue", ""))))
+            lines.append(f"  type={r.get('FormType',''):12s} group={r.get('GroupTitle',''):20s} raw={raw}")
+            if cleaned != raw.strip("'"):
+                lines.append(f"  {'':>6s}clean={cleaned}")
+        return Pre("\n".join(lines))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\n{traceback.format_exc()}")
+
+
 @rt("/_sd_inspect")
 async def sd_inspect(req):
     """Diagnostic: show the actual columns and sample rows from sitedocs_forms."""

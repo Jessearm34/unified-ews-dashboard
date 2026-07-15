@@ -1219,10 +1219,6 @@ async def sd_person_forms(req):
         form_panels = []
         import requests
 
-        debug_info = []
-        debug_info.append(f"API key set: {bool(api_key)}")
-        debug_info.append(f"Forms to fetch: {min(5, len(person_forms))}")
-
         for _, frow in person_forms.head(5).iterrows():
             fid = frow.get("Id") or frow.get("DocumentId", "")
             dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
@@ -1234,14 +1230,11 @@ async def sd_person_forms(req):
             if api_key and fid:
                 try:
                     url = f"{api_base}/api/v1/forms/content/{fid}"
-                    debug_info.append(f"Fetching: {url[:80]}")
                     resp = requests.get(url, headers={"Authorization": api_key, "Accept": "application/json"}, timeout=15)
-                    debug_info.append(f"HTTP {resp.status_code}")
                     if resp.status_code == 200:
                         content = resp.json()
-                        debug_info.append(f"Content type: {type(content).__name__}, has Groups: {'Groups' in content if isinstance(content, dict) else 'N/A'}")
-                except Exception as e:
-                    debug_info.append(f"Error: {e}")
+                except Exception:
+                    pass
 
             if not content or not isinstance(content, dict):
                 # Fallback: just show metadata
@@ -1358,7 +1351,6 @@ async def sd_person_forms(req):
         count = len(person_forms)
         return Div(
             close_btn,
-            Div(NotStr("<br>".join(debug_info)), cls="note", style="margin-bottom:8px;font-size:11px;"),
             H3(f"{type_label} forms from {worker_name} ({count})",
                style="margin:0 0 10px;font-size:15px;"),
             NotStr("\n".join(form_panels)),

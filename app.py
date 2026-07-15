@@ -1424,6 +1424,53 @@ async def sd_raw_form(req):
         return Pre(f"Error: {e}\n{traceback.format_exc()}")
 
 
+@rt("/_sd_lookup")
+async def sd_lookup(req):
+    """Search all SD database tables for a UUID to identify what it is."""
+    uid = req.query_params.get("uid", "")
+    if not uid:
+        return Pre("Usage: /_sd_lookup?uid=c6e5469e-...")
+    try:
+        from sqlalchemy import text as _text
+        from data.sd_data import sd_engine
+        eng = sd_engine()
+        lines = [f"Searching for: {uid}"]
+        with eng.connect() as conn:
+            tables = conn.execute(_text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name"
+            )).all()
+            for (tname,) in tables:
+                cols = conn.execute(_text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name=:t AND data_type IN ('text','character varying')",
+                    {"t": tname}
+                )).all()
+                for (cname,) in cols:
+                    cnt = conn.execute(_text(
+                        f'SELECT COUNT(*) FROM "{tname}" WHERE "{cname}" = :uid',
+                        {"uid": uid}
+                    )).scalar()
+                    if cnt and cnt > 0:
+                        sample = conn.execute(_text(
+                            f'SELECT * FROM "{tname}" WHERE "{cname}" = :uid LIMIT 1',
+                            {"uid": uid}
+                        )).fetchone()
+                        name = ""
+                        if sample:
+                            sd = dict(sample)
+                            for k in ("Name", "label", "DocumentTemplateName", "Description", "FirstName"):
+                                if k in sd and str(sd[k]).strip():
+                                    name = f" → {str(sd[k])[:60]}"
+                                    break
+                        lines.append(f"  {tname}.{cname}: {cnt} row(s){name}")
+            eng.dispose()
+        return Pre("\n".join(lines))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\n{traceback.format_exc()}")
+
+
 @rt("/_sd_close_panel")
 async def sd_close_panel(req):
     """Return empty content for HTMX to swap into the person-forms-panel."""

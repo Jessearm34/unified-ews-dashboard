@@ -1259,14 +1259,12 @@ async def sd_person_forms(req):
                     for k in ("Text", "Name", "Label", "Value"):
                         if k in raw and str(raw[k]).strip():
                             return str(raw[k])
-                    # Check for entity ID — resolve against locations map
                     if "Id" in raw:
                         uid = str(raw["Id"])
                         if uid in loc_map:
                             return loc_map[uid]
-                        # Unresolved UUID — show just the name-ish part
-                        if re.match(r'^[0-9a-f\-]{32,}$', uid):
-                            return uid[:8]
+                        # Unresolved UUID — show generic label based on context
+                        return "Location"
                     return str(raw)
                 s = str(raw)
                 if s.startswith("{"):
@@ -1280,8 +1278,7 @@ async def sd_person_forms(req):
                                 uid = str(p["Id"])
                                 if uid in loc_map:
                                     return loc_map[uid]
-                                if re.match(r'^[0-9a-f\-]{32,}$', uid):
-                                    return uid[:8]
+                                return "Location"
                             return str(p)
                     except Exception:
                         pass

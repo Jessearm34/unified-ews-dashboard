@@ -1263,7 +1263,8 @@ async def sd_person_forms(req):
                         uid = str(raw["Id"])
                         if uid in loc_map:
                             return loc_map[uid]
-                        # Unresolved UUID — show generic label based on context
+                        if uid in _MISSING_LOCS:
+                            return _MISSING_LOCS[uid]
                         return "Location"
                     return str(raw)
                 s = str(raw)
@@ -1278,11 +1279,18 @@ async def sd_person_forms(req):
                                 uid = str(p["Id"])
                                 if uid in loc_map:
                                     return loc_map[uid]
+                                if uid in _MISSING_LOCS:
+                                    return _MISSING_LOCS[uid]
                                 return "Location"
                             return str(p)
                     except Exception:
                         pass
                 return s
+
+            # Known missing location UUIDs that SiteDocs returns but aren't in the warehouse
+            _MISSING_LOCS = {
+                "c6e5469e-0647-4ba1-a1d7-730632d895ab": "Delta",
+            }
 
             group_htmls = []
             for group in content.get("Groups", []):

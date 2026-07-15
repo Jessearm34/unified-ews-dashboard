@@ -21,75 +21,6 @@ _PLOT_CONFIG = {"displayModeBar": False, "displaylogo": False, "responsive": Tru
 _ids = iter(lambda: f'chart-{random.randrange(10_000_000, 99_999_999)}', None)
 
 
-def _clean_value(val: str) -> str:
-    """Parse SiteDocs form values: clean JSON, fix malformed JSON, fall back to regex extraction."""
-    if not val or val == "nan":
-        return ""
-
-    s = str(val).strip()
-
-    # ── Pre-process: strip control chars that break JSON ──
-    cleaned = s.replace("\t", " ").replace("\r", " ").replace("\n", " ")
-
-    # ── Try standard JSON parse ──
-    def _try_parse(text: str):
-        try:
-            return json.loads(text)
-        except (json.JSONDecodeError, TypeError):
-            return None
-
-    parsed = _try_parse(cleaned)
-
-    # ── If that fails, try fixing truncated JSON ──
-    if parsed is None:
-        # Maybe missing closing braces
-        fixed = cleaned
-        open_br = fixed.count("{")
-        close_br = fixed.count("}")
-        while close_br < open_br:
-            fixed += "}"
-            close_br += 1
-        if fixed != cleaned:
-            parsed = _try_parse(fixed)
-
-    # ── If we have a parsed object, extract readable text ──
-    if parsed is not None:
-        if isinstance(parsed, dict):
-            for key in ("Text", "Name", "Label", "Value", "Description", "Title"):
-                if key in parsed and str(parsed[key]).strip():
-                    return str(parsed[key])
-            for v in parsed.values():
-                if isinstance(v, str) and v.strip():
-                    return v
-            return str(parsed)
-        if isinstance(parsed, list):
-            parts = [_clean_value(json.dumps(x)) if isinstance(x, (dict, list)) else str(x) for x in parsed[:3]]
-            return "; ".join(p for p in parts if p)
-        return str(parsed)
-
-    # ── JSON failed — try regex extraction ──
-    # Extract a human-readable value from garbled text
-    # Pattern 1: "Label":"SomeText"
-    m = re.search(r'"Label"\s*:\s*"([^"]+)"', s)
-    if m:
-        return m.group(1).strip()
-    # Pattern 2: "Text":"SomeText"
-    m = re.search(r'"Text"\s*:\s*"([^"]+)"', s)
-    if m:
-        return m.group(1).strip()
-    # Pattern 3: "Name":"SomeText"
-    m = re.search(r'"Name"\s*:\s*"([^"]+)"', s)
-    if m:
-        return m.group(1).strip()
-    # Pattern 4: Extract any readable text that isn't a UUID
-    # If the whole thing looks like garbage (mostly UUIDs), extract UUID and resolve later
-    uuids = re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', s)
-    if uuids:
-        return uuids[0]  # Return first UUID — caller's resolve() will look it up
-    # Last resort: return as-is but truncated
-    return s[:80]
-
-
 def _rgba(hex_color: str, alpha: float) -> str:
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
@@ -317,7 +248,6 @@ def schedule_compliance(sched: pd.DataFrame) -> str:
         marker=dict(colors=colors, line=dict(color="white", width=1)),
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
-    # Add completion % annotation
     pct = c["completion_pct"]
     fig.add_annotation(text=f"{pct:.0f}%<br><span style='font-size:10px'>complete</span>",
         x=0.5, y=0.5, showarrow=False, font=dict(size=18, color="#16a34a", family="Inter"),
@@ -326,7 +256,6 @@ def schedule_compliance(sched: pd.DataFrame) -> str:
 
 
 def schedules_overview(sched: pd.DataFrame) -> str:
-    """Schedule status summary — now a real chart."""
     return schedule_compliance(sched)
 
 
@@ -520,74 +449,84 @@ def reporter_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> st
 
 
 # --------------------------------------------------------------------------- #
-# Form-response-level BBSO/RIR detail tables
+# RIR / Near Miss events directly from clean forms metadata
 # --------------------------------------------------------------------------- #
 
 
-def bbso_category_safety_table(responses: pd.DataFrame) -> str:
-    """Safe vs At-Risk breakdown by category (GroupTitle) from BBSO form responses."""
-    df = D.bbso_at_risk_by_category(responses)
-    if df.empty:
-        return empty("No BBSO category data yet — run the form_responses pipeline first")
+def rir_events_from_forms(forms: pd.DataFrame, workers: pd.DataFrame,
+                           incidents: pd.DataFrame | None = None,
+                           locations: pd.DataFrame | None = None) -> str:
+    """RIR/Near Miss events built from clean metadata tables — no form_responses needed.
 
-    rows = []
-    for _, r in df.iterrows():
-        pct = r["SafePct"]
-        cls = "badge green" if pct >= 90 else ("badge warn" if pct >= 70 else "badge red")
-        bar_w = min(int(pct), 100)
-        bar = (f"<div style='background:#e2e8f0;border-radius:4px;height:10px;width:100px;display:inline-block;vertical-align:middle;'>"
-               f"<div style='background:{'#16a34a' if pct >= 80 else '#ea580c' if pct >= 60 else '#dc2626'};"
-               f"width:{bar_w}%;height:10px;border-radius:4px;'></div></div>")
-        rows.append(f"""<tr>
-            <td>{r['Category']}</td>
-            <td class='num'>{int(r['Safe'])}</td>
-            <td class='num'>{int(r['AtRisk'])}</td>
-            <td class='num'>{bar} <span class='{cls}'>{pct:.0f}%</span></td>
-        </tr>""")
-    header = """<tr><th>Category</th><th class='num'>Safe</th><th class='num'>At-Risk</th><th class='num'>Safe %</th></tr>"""
-    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}
-    </tbody></table></div>"""
+    Uses sitedocs_forms (metadata) and sitedocs_incidents tables which have clean data.
+    Falls back to incidents table for additional detail.
+    """
+    # Resolve worker names
+    wm = {str(w["Id"]): f"{w.get('FirstName','')} {w.get('LastName','')}".strip()
+          for _, w in workers.iterrows()}
+    lm = {}
+    if locations is not None and not locations.empty:
+        lm = {str(loc["Id"]): str(loc.get("Name", "")) for _, loc in locations.iterrows()}
 
+    # Filter forms to RIR/Near Miss types
+    from data.sd_data import _filter_rir
+    rir_forms = _filter_rir(forms).copy()
+    if rir_forms.empty:
+        # Fallback: filter by DocumentTemplateName
+        rir_forms = forms[forms["DocumentTemplateName"].str.contains("RIR|Near Miss", na=False)].copy()
 
-def bbso_recent_at_risk_table(responses: pd.DataFrame, workers: pd.DataFrame) -> str:
-    """Most recent at-risk observations with context: who, when, what task, what was wrong."""
-    df = D.bbso_recent_at_risk(responses, workers, limit=12)
-    if df.empty:
-        return empty("No recent at-risk observations")
-
-    rows = []
-    for _, r in df.iterrows():
-        comments = r["Comments"]
-        comment_html = f"<br><span class='note'>{comments[:120]}</span>" if comments and comments.strip() else ""
-        rows.append(f"""<tr>
-            <td>{r['Worker']}</td>
-            <td>{r['Date']}</td>
-            <td>{str(r['Task'])[:40]}</td>
-            <td>{r['Category']}</td>
-            <td>{r['Observation']}{comment_html}</td>
-        </tr>""")
-    header = """<tr><th>Observer</th><th>Date</th><th>Task</th><th>Category</th><th>At-Risk Observation</th></tr>"""
-    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""
-
-
-def rir_events_table(responses: pd.DataFrame, workers: pd.DataFrame,
-                      locations: pd.DataFrame | None = None) -> str:
-    """Recent RIR/Near Miss events with what happened, severity, root cause, action."""
-    df = D.rir_recent_events(responses, workers, locations, limit=10)
-    if df.empty:
+    if rir_forms.empty and (incidents is None or incidents.empty):
         return empty("No RIR/Near Miss events recorded")
 
     rows = []
-    for _, r in df.iterrows():
-        sev = _clean_value(r["Severity"])
-        sev_cls = "badge red" if "high" in sev.lower() else ("badge warn" if "medium" in sev.lower() else "badge")
-        rows.append(f"""<tr>
-            <td>{r['Worker']}</td>
-            <td>{r['Date']}</td>
-            <td>{_clean_value(str(r['WhatHappened']))[:80]}</td>
-            <td><span class='{sev_cls}'>{sev[:25]}</span></td>
-            <td>{_clean_value(str(r['RootCause']))[:60]}</td>
-            <td>{_clean_value(str(r['Action']))[:60]}</td>
-        </tr>""")
-    header = """<tr><th>Reporter</th><th>Date</th><th>What Happened</th><th>Severity</th><th>Root Cause</th><th>Action</th></tr>"""
+
+    # From forms metadata
+    if not rir_forms.empty:
+        date_col = "CreatedOn" if "CreatedOn" in rir_forms.columns else "createdOn"
+        if date_col in rir_forms.columns:
+            rir_forms[date_col] = pd.to_datetime(rir_forms[date_col], errors="coerce")
+            rir_forms = rir_forms.sort_values(date_col, ascending=False)
+
+        for _, r in rir_forms.head(10).iterrows():
+            created_by = str(r.get("CreatedBy", ""))
+            dt = str(r.get(date_col, ""))[:10] if date_col in r else ""
+            name = r.get("Label", r.get("DocumentTemplateName", ""))
+            loc_id = str(r.get("LocationId", ""))
+            loc_name = lm.get(loc_id, "") if loc_id else ""
+            worker = wm.get(created_by, created_by[:12]) if created_by else ""
+            rows.append(f"""<tr>
+                <td>{worker}</td>
+                <td>{dt}</td>
+                <td>{name[:60]}</td>
+                <td><span class='badge'>—</span></td>
+                <td>—</td>
+                <td>—</td>
+            </tr>""")
+
+    # From incidents table (additional detail)
+    if incidents is not None and not incidents.empty:
+        inc = incidents.copy()
+        if "CreatedOn" in inc.columns:
+            inc["CreatedOn"] = pd.to_datetime(inc["CreatedOn"], errors="coerce")
+            inc = inc.sort_values("CreatedOn", ascending=False)
+        for _, r in inc.head(5).iterrows():
+            desc = r.get("Name", r.get("Description", ""))
+            status = str(r.get("LatestStatus", ""))
+            created_by = str(r.get("CreatedBy", "")) if "CreatedBy" in r else ""
+            worker = wm.get(created_by, created_by[:12]) if created_by else ""
+            dt = str(r.get("CreatedOn", ""))[:10] if "CreatedOn" in r else ""
+            status_cls = "badge red" if status.lower() in ("open", "investigation") else "badge green"
+            rows.append(f"""<tr>
+                <td>{worker}</td>
+                <td>{dt}</td>
+                <td>{desc[:60]}</td>
+                <td><span class='{status_cls}'>{status[:15]}</span></td>
+                <td>—</td>
+                <td>—</td>
+            </tr>""")
+
+    if not rows:
+        return empty("No events to display")
+
+    header = """<tr><th>Reporter</th><th>Date</th><th>Event</th><th>Status</th><th>Root Cause</th><th>Action</th></tr>"""
     return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""

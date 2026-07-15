@@ -906,7 +906,7 @@ def render_sd_section(section_key):
             Div(
                 Div(
                     H3("Recent RIR / Near Miss Events"),
-                    NotStr(SDC.rir_events_table(ds.form_responses, ds.workers, ds.locations)),
+                    NotStr(SDC.rir_events_from_forms(ds.forms, ds.workers, ds.incidents, ds.locations)),
                     cls="panel",
                 ),
                 cls="mt",
@@ -1272,73 +1272,22 @@ async def sd_person_forms(req):
                 return loc_map[v]
             return v
 
-        # Build content panels from form_responses
-        form_panels = []
-        for _, frow in person_forms.head(10).iterrows():
-            fid = frow.get("Id") or frow.get("DocumentId", "")
-            dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
-            loc_id = str(frow.get("LocationId", ""))
-            loc_name = loc_map.get(loc_id, loc_id[:12]) if loc_id else "—"
+        # Build simple form list from metadata
+            form_panels = []
+            for _, frow in person_forms.head(10).iterrows():
+                fid = frow.get("Id") or frow.get("DocumentId", "")
+                dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
+                loc_id = str(frow.get("LocationId", ""))
+                loc_name = loc_map.get(loc_id, loc_id[:12]) if loc_id else "—"
+                label = frow.get("Label", frow.get("DocumentTemplateName", ""))
+                form_panels.append(
+                    f"<div style='padding:6px 0;border-bottom:1px solid var(--line);'>"
+                    f"<div><strong>{type_label}</strong> — {dt}</div>"
+                    f"<div class='note'>{label[:60]} · {loc_name}</div>"
+                    f"</div>"
+                )
 
-            # Get responses for this form
-            form_items = []
-            if hasattr(ds, 'form_responses') and not ds.form_responses.empty:
-                fr = ds.form_responses[ds.form_responses["FormId"] == fid].copy()
-                if not fr.empty:
-                    for grp_title, grp_df in fr.groupby("GroupTitle"):
-                        group_rows = []
-                        for _, item in grp_df.iterrows():
-                            q = item.get("ItemContent", "")
-                            raw = str(item.get("ItemValue", ""))
-                            val = clean_json(raw)
-                            val = resolve(val)
-                            comments = clean_json(str(item.get("Comments", "")))
-                            item_type = item.get("ItemType", "")
-                            v_lower = val.strip().lower()
-                            if item_type in ("YesNo", "PassFailCounter", "Inspection") and grp_title != "Task Information":
-                                if v_lower in ("yes", "pass", "true", "safe", "1"):
-                                    cls = "badge green"
-                                    label = "Safe ✓"
-                                elif v_lower in ("no", "fail", "false", "0"):
-                                    cls = "badge red"
-                                    label = "At-Risk ✗"
-                                else:
-                                    cls = "badge"
-                                    label = val[:40]
-                            else:
-                                cls = "badge"
-                                label = val[:60]
-                            comment_html = f"<br><span class='note'>{comments[:120]}</span>" if comments else ""
-                            group_rows.append(
-                                f"<tr><td style='padding:4px 10px;'>{q[:60]}</td>"
-                                f"<td style='padding:4px 10px;'><span class='{cls}'>{label}</span>{comment_html}</td></tr>"
-                            )
-                        grp_html = f"<tr style='background:#f8fafc;'><td colspan='2' style='padding:6px 10px;font-weight:700;font-size:12px;color:#475569;'>{grp_title}</td></tr>" + "".join(group_rows)
-                        form_items.append(grp_html)
-
-            all_content = "".join(form_items) if form_items else (
-                f"<tr><td colspan='2' class='note' style='padding:8px;'>No field-level responses</td></tr>"
-            )
-
-            # Check for high-severity items for RIR
-            severity_badge = ""
-            if form_type != "bbso" and 'fr' in dir() and not fr.empty:
-                sev_rows = fr[fr["ItemContent"].str.contains("severity|potential", case=False, na=False)]
-                if not sev_rows.empty:
-                    sev_val = clean_json(str(sev_rows.iloc[0].get("ItemValue", "")))
-                    sev_val = resolve(sev_val)
-                    is_high = "high" in sev_val.lower()
-                    sev_cls = "badge red" if is_high else ("badge warn" if "medium" in sev_val.lower() else "badge")
-                    severity_badge = f" <span class='{sev_cls}'>{sev_val[:25]}</span>"
-
-            form_panels.append(
-                f"<div class='panel' style='margin-bottom:10px;padding:12px;'>"
-                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;'>"
-                f"<div><strong>{type_label}</strong> — {dt}{severity_badge}</div>"
-                f"<span class='note'>{loc_name}</span></div>"
-                f"<table class='data' style='font-size:12px;'><tbody>{all_content}</tbody></table>"
-                f"</div>"
-            )
+            all_content = "\n".join(form_panels) if form_panels else "No forms"
 
         count = len(person_forms)
         return Div(

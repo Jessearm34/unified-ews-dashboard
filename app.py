@@ -1266,6 +1266,9 @@ async def sd_person_forms(req):
                     for k in ("Text", "Name", "Label", "Value"):
                         if k in raw and str(raw[k]).strip():
                             return str(raw[k])
+                    # Check for entity ID — resolve against locations map
+                    if "Id" in raw and str(raw["Id"]) in loc_map:
+                        return loc_map[str(raw["Id"])]
                     return str(raw)
                 s = str(raw)
                 if s.startswith("{"):
@@ -1275,6 +1278,8 @@ async def sd_person_forms(req):
                             for k in ("Text", "Name", "Label", "Value"):
                                 if k in p and str(p[k]).strip():
                                     return str(p[k])
+                            if "Id" in p and str(p["Id"]) in loc_map:
+                                return loc_map[str(p["Id"])]
                             return str(p)
                     except Exception:
                         pass

@@ -1,7 +1,7 @@
 """Plotly figure builders for the SiteDocs safety dashboard."""
 from __future__ import annotations
 
-import itertools
+import re
 import json
 import random
 
@@ -22,17 +22,42 @@ _ids = iter(lambda: f'chart-{random.randrange(10_000_000, 99_999_999)}', None)
 
 
 def _clean_value(val: str) -> str:
-    """Try to parse a JSON value and extract readable text. Falls back to raw string."""
+    """Parse SiteDocs form values: clean JSON, fix malformed JSON, fall back to regex extraction."""
     if not val or val == "nan":
         return ""
-    try:
-        parsed = json.loads(val)
+
+    s = str(val).strip()
+
+    # ── Pre-process: strip control chars that break JSON ──
+    cleaned = s.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+    # ── Try standard JSON parse ──
+    def _try_parse(text: str):
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    parsed = _try_parse(cleaned)
+
+    # ── If that fails, try fixing truncated JSON ──
+    if parsed is None:
+        # Maybe missing closing braces
+        fixed = cleaned
+        open_br = fixed.count("{")
+        close_br = fixed.count("}")
+        while close_br < open_br:
+            fixed += "}"
+            close_br += 1
+        if fixed != cleaned:
+            parsed = _try_parse(fixed)
+
+    # ── If we have a parsed object, extract readable text ──
+    if parsed is not None:
         if isinstance(parsed, dict):
-            # Common SiteDocs patterns: {"Text": "...", "Value": ...} or {"Name": "...", ...}
-            for key in ("Text", "Name", "Value", "Description", "Label"):
+            for key in ("Text", "Name", "Label", "Value", "Description", "Title"):
                 if key in parsed and str(parsed[key]).strip():
                     return str(parsed[key])
-            # Return first string-ish value
             for v in parsed.values():
                 if isinstance(v, str) and v.strip():
                     return v
@@ -41,8 +66,28 @@ def _clean_value(val: str) -> str:
             parts = [_clean_value(json.dumps(x)) if isinstance(x, (dict, list)) else str(x) for x in parsed[:3]]
             return "; ".join(p for p in parts if p)
         return str(parsed)
-    except (json.JSONDecodeError, TypeError):
-        return str(val)
+
+    # ── JSON failed — try regex extraction ──
+    # Extract a human-readable value from garbled text
+    # Pattern 1: "Label":"SomeText"
+    m = re.search(r'"Label"\s*:\s*"([^"]+)"', s)
+    if m:
+        return m.group(1).strip()
+    # Pattern 2: "Text":"SomeText"
+    m = re.search(r'"Text"\s*:\s*"([^"]+)"', s)
+    if m:
+        return m.group(1).strip()
+    # Pattern 3: "Name":"SomeText"
+    m = re.search(r'"Name"\s*:\s*"([^"]+)"', s)
+    if m:
+        return m.group(1).strip()
+    # Pattern 4: Extract any readable text that isn't a UUID
+    # If the whole thing looks like garbage (mostly UUIDs), extract UUID and resolve later
+    uuids = re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', s)
+    if uuids:
+        return uuids[0]  # Return first UUID — caller's resolve() will look it up
+    # Last resort: return as-is but truncated
+    return s[:80]
 
 
 def _rgba(hex_color: str, alpha: float) -> str:

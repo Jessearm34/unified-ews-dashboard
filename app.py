@@ -7,6 +7,7 @@ GeoTab was removed — unreliable + comes with its own dashboard.
 from __future__ import annotations
 
 import os
+import re
 import time
 from datetime import date, datetime, timedelta, timezone
 from hashlib import pbkdf2_hmac
@@ -1215,22 +1216,49 @@ async def sd_person_forms(req):
         def clean_json(val):
             if not val or val == "nan":
                 return ""
-            try:
-                p = _json.loads(val)
-                if isinstance(p, dict):
-                    for k in ("Text", "Name", "Value", "Description", "Label"):
-                        if k in p and str(p[k]).strip():
-                            return str(p[k])
-                    for v in p.values():
+            s = str(val).strip()
+            cleaned = s.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+            def _try_parse(text):
+                try:
+                    return _json.loads(text)
+                except (_json.JSONDecodeError, TypeError, ValueError):
+                    return None
+
+            parsed = _try_parse(cleaned)
+            if parsed is None:
+                fixed = cleaned
+                ob = fixed.count("{")
+                cb = fixed.count("}")
+                while cb < ob:
+                    fixed += "}"
+                    cb += 1
+                if fixed != cleaned:
+                    parsed = _try_parse(fixed)
+
+            if parsed is not None:
+                if isinstance(parsed, dict):
+                    for k in ("Text", "Name", "Label", "Value", "Description", "Title"):
+                        if k in parsed and str(parsed[k]).strip():
+                            return str(parsed[k])
+                    for v in parsed.values():
                         if isinstance(v, str) and v.strip():
                             return v
-                    return str(p)
-                if isinstance(p, list):
-                    parts = [clean_json(_json.dumps(x)) if isinstance(x, (dict, list)) else str(x) for x in p[:3]]
-                    return "; ".join(pp for pp in parts if pp)
-                return str(p)
-            except (_json.JSONDecodeError, TypeError, ValueError):
-                return str(val)
+                    return str(parsed)
+                if isinstance(parsed, list):
+                    parts = [clean_json(_json.dumps(x)) if isinstance(x, (dict, list)) else str(x) for x in parsed[:3]]
+                    return "; ".join(p for p in parts if p)
+                return str(parsed)
+
+            # Regex fallback
+            for pat in (r'"Label"\s*:\s*"([^"]+)"', r'"Text"\s*:\s*"([^"]+)"', r'"Name"\s*:\s*"([^"]+)"'):
+                m = re.search(pat, s)
+                if m:
+                    return m.group(1).strip()
+            uuids = re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', s)
+            if uuids:
+                return uuids[0]
+            return s[:80]
 
         def resolve(val):
             v = str(val).strip()

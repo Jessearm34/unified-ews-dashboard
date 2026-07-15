@@ -1213,81 +1213,116 @@ async def sd_person_forms(req):
         close_btn = A("← Close", cls="preset", style="margin-bottom:10px;display:inline-block;",
                       hx_get="/_sd_close_panel", hx_target="#person-forms-panel", hx_swap="innerHTML")
 
-        def clean_json(val):
-            if not val or val == "nan":
-                return ""
-            s = str(val).strip()
-            cleaned = s.replace("\t", " ").replace("\r", " ").replace("\n", " ")
-
-            def _try_parse(text):
-                try:
-                    return _json.loads(text)
-                except (_json.JSONDecodeError, TypeError, ValueError):
-                    return None
-
-            parsed = _try_parse(cleaned)
-            if parsed is None:
-                fixed = cleaned
-                ob = fixed.count("{")
-                cb = fixed.count("}")
-                while cb < ob:
-                    fixed += "}"
-                    cb += 1
-                if fixed != cleaned:
-                    parsed = _try_parse(fixed)
-
-            if parsed is not None:
-                if isinstance(parsed, dict):
-                    for k in ("Text", "Name", "Label", "Value", "Description", "Title"):
-                        if k in parsed and str(parsed[k]).strip():
-                            return str(parsed[k])
-                    for v in parsed.values():
-                        if isinstance(v, str) and v.strip():
-                            return v
-                    return str(parsed)
-                if isinstance(parsed, list):
-                    parts = [clean_json(_json.dumps(x)) if isinstance(x, (dict, list)) else str(x) for x in parsed[:3]]
-                    return "; ".join(p for p in parts if p)
-                return str(parsed)
-
-            # Regex fallback
-            for pat in (r'"Label"\s*:\s*"([^"]+)"', r'"Text"\s*:\s*"([^"]+)"', r'"Name"\s*:\s*"([^"]+)"'):
-                m = re.search(pat, s)
-                if m:
-                    return m.group(1).strip()
-            uuids = re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', s)
-            if uuids:
-                return uuids[0]
-            return s[:80]
-
-        def resolve(val):
-            v = str(val).strip()
-            w_map = {}
-            if not ds.workers.empty and "Id" in ds.workers.columns:
-                for _, w in ds.workers.iterrows():
-                    w_map[str(w["Id"])] = f"{w.get('FirstName','')} {w.get('LastName','')}".strip()
-            if v in w_map:
-                return w_map[v]
-            if v in loc_map:
-                return loc_map[v]
-            return v
-
-        # Build simple form list from metadata
+        # ── Fetch fresh form content from SiteDocs API (no warehouse middleman) ──
+        api_key = os.getenv("SITEDOCS_API_KEY", "")
+        api_base = os.getenv("SITEDOCS_API_BASE", "https://api-1.sitedocs.com")
         form_panels = []
-        for _, frow in person_forms.head(10).iterrows():
+        import requests
+
+        for _, frow in person_forms.head(5).iterrows():
             fid = frow.get("Id") or frow.get("DocumentId", "")
             dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
             loc_id = str(frow.get("LocationId", ""))
             loc_name = loc_map.get(loc_id, loc_id[:12]) if loc_id else "—"
-            label = frow.get("Label", frow.get("DocumentTemplateName", ""))
-            form_panels.append(
-                f"<div style='padding:6px 0;border-bottom:1px solid var(--line);'>"
-                f"<div><strong>{type_label}</strong> — {dt}</div>"
-                f"<div class='note'>{label[:60]} · {loc_name}</div>"
-                f"</div>"
-            )
 
-        all_content = "\n".join(form_panels) if form_panels else "No forms"
+            # Fetch from API directly
+            content = None
+            if api_key and fid:
+                try:
+                    url = f"{api_base}/api/v1/forms/content/{fid}"
+                    resp = requests.get(url, headers={"Authorization": api_key, "Accept": "application/json"}, timeout=15)
+                    if resp.status_code == 200:
+                        content = resp.json()
+                except Exception:
+                    pass
+
+            if not content or not isinstance(content, dict):
+                # Fallback: just show metadata
+                label = frow.get("Label", frow.get("DocumentTemplateName", ""))
+                form_panels.append(
+                    f"<div class='panel' style='margin-bottom:8px;padding:10px;'>"
+                    f"<div style='display:flex;justify-content:space-between;font-size:13px;'>"
+                    f"<strong>{type_label}</strong> — {dt}</div>"
+                    f"<div class='note'>{label[:60]} · {loc_name}</div></div>"
+                )
+                continue
+
+            # Process API response groups → items
+            group_htmls = []
+            for group in content.get("Groups", []):
+                gtitle = group.get("Title", "")
+                items = group.get("Items", [])
+                item_rows = []
+                for item in items:
+                    q = str(item.get("Content", ""))
+                    raw_val = item.get("Value")
+                    raw_comments = item.get("Comments", "")
+                    item_type = item.get("Type", "")
+
+                    # Extract readable value from whatever shape the API returns
+                    if isinstance(raw_val, dict):
+                        for k in ("Text", "Name", "Label", "Value", "Description", "Title"):
+                            if k in raw_val and str(raw_val[k]).strip():
+                                val = str(raw_val[k])
+                                break
+                        else:
+                            val = str(raw_val)
+                    elif isinstance(raw_val, list):
+                        parts = []
+                        for p in raw_val[:3]:
+                            if isinstance(p, dict):
+                                parts.append(str(p.get("Text", p.get("Name", p.get("Label", str(p))))))
+                            else:
+                                parts.append(str(p))
+                        val = "; ".join(parts)
+                    else:
+                        val = str(raw_val) if raw_val is not None else ""
+
+                    # Comments
+                    comments = ""
+                    if raw_comments:
+                        if isinstance(raw_comments, dict):
+                            comments = str(raw_comments.get("Text", ""))
+                        elif isinstance(raw_comments, list):
+                            comments = "; ".join(str(c.get("Text", c)) if isinstance(c, dict) else str(c) for c in raw_comments[:2])
+                        else:
+                            comments = str(raw_comments)
+
+                    # Classify safe/at-risk for YesNo/PassFail/Inspection items
+                    v_lower = val.strip().lower()
+                    if item_type in ("YesNo", "PassFailCounter", "Inspection") and gtitle != "Task Information":
+                        if v_lower in ("yes", "pass", "true", "safe", "1"):
+                            cls = "badge green"
+                            display = "Safe ✓"
+                        elif v_lower in ("no", "fail", "false", "0"):
+                            cls = "badge red"
+                            display = "At-Risk ✗"
+                        else:
+                            cls = "badge"
+                            display = val[:40]
+                    else:
+                        cls = "badge"
+                        display = val[:60]
+
+                    cmt = f"<br><span class='note'>{comments[:120]}</span>" if comments else ""
+                    item_rows.append(
+                        f"<tr><td style='padding:3px 8px;font-size:12px;'>{q[:60]}</td>"
+                        f"<td style='padding:3px 8px;'><span class='{cls}'>{display}</span>{cmt}</td></tr>"
+                    )
+
+                if item_rows:
+                    group_htmls.append(
+                        f"<tr style='background:#f8fafc;'><td colspan='2' style='padding:4px 8px;font-weight:600;font-size:11px;color:#475569;'>{gtitle}</td></tr>"
+                        + "".join(item_rows)
+                    )
+
+            body = "".join(group_htmls) if group_htmls else "<tr><td colspan='2' class='note' style='padding:8px;'>No field data</td></tr>"
+            form_panels.append(
+                f"<div class='panel' style='margin-bottom:8px;padding:10px;'>"
+                f"<div style='display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;'>"
+                f"<strong>{type_label}</strong> — {dt} <span class='note'>{loc_name}</span></div>"
+                f"<table class='data' style='font-size:12px;'><tbody>{body}</tbody></table></div>"
+            )
 
         count = len(person_forms)
         return Div(

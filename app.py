@@ -1255,35 +1255,45 @@ async def sd_person_forms(req):
                 continue
 
             # Process API response groups → items
+            # Type field is numeric (0-indexed position in SiteDocs enum):
+            # 1=Checkbox, 2=Inspection, 6=ShortAnswer, 9=SelectSingle, 13=SelectDate,
+            # 18=YesNo, 19=PassFailCounter
+            SAFE_TYPES = {1, 2, 18, 19}  # Checkbox, Inspection, YesNo, PassFailCounter
+
+            def _extract_label(raw):
+                """Extract readable label from a value that might be JSON."""
+                if isinstance(raw, dict):
+                    for k in ("Text", "Name", "Label", "Value"):
+                        if k in raw and str(raw[k]).strip():
+                            return str(raw[k])
+                    return str(raw)
+                s = str(raw)
+                if s.startswith("{"):
+                    try:
+                        p = _json.loads(s)
+                        if isinstance(p, dict):
+                            for k in ("Text", "Name", "Label", "Value"):
+                                if k in p and str(p[k]).strip():
+                                    return str(p[k])
+                            return str(p)
+                    except Exception:
+                        pass
+                return s
+
             group_htmls = []
             for group in content.get("Groups", []):
                 gtitle = group.get("Title", "")
                 items = group.get("Items", [])
                 item_rows = []
                 for item in items:
-                    q = str(item.get("Content", ""))
+                    raw_content = item.get("Content", "")
+                    q = _extract_label(raw_content)
                     raw_val = item.get("Value")
                     raw_comments = item.get("Comments", "")
-                    item_type = item.get("Type", "")
+                    item_type = item.get("Type", 0)
 
-                    # Extract readable value from whatever shape the API returns
-                    if isinstance(raw_val, dict):
-                        for k in ("Text", "Name", "Label", "Value", "Description", "Title"):
-                            if k in raw_val and str(raw_val[k]).strip():
-                                val = str(raw_val[k])
-                                break
-                        else:
-                            val = str(raw_val)
-                    elif isinstance(raw_val, list):
-                        parts = []
-                        for p in raw_val[:3]:
-                            if isinstance(p, dict):
-                                parts.append(str(p.get("Text", p.get("Name", p.get("Label", str(p))))))
-                            else:
-                                parts.append(str(p))
-                        val = "; ".join(parts)
-                    else:
-                        val = str(raw_val) if raw_val is not None else ""
+                    # Extract value
+                    val = _extract_label(raw_val)
 
                     # Comments
                     comments = ""
@@ -1295,9 +1305,9 @@ async def sd_person_forms(req):
                         else:
                             comments = str(raw_comments)
 
-                    # Classify safe/at-risk for YesNo/PassFail/Inspection items
+                    # Classify safe/at-risk for Checkbox/Inspection/YesNo/PassFail
                     v_lower = val.strip().lower()
-                    if item_type in ("YesNo", "PassFailCounter", "Inspection") and gtitle != "Task Information":
+                    if item_type in SAFE_TYPES and gtitle != "Task Information" and "Task" not in gtitle:
                         if v_lower in ("yes", "pass", "true", "safe", "1"):
                             cls = "badge green"
                             display = "Safe ✓"

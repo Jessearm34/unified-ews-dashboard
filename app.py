@@ -1357,6 +1357,20 @@ async def sd_clear_cache(req):
     return Pre("Cache cleared. Refresh the page to see fresh data.")
 
 
+@rt("/_check_env")
+async def check_env(req):
+    """Check which env vars are available (safe check — doesn't print values)."""
+    vars_to_check = ["SITEDOCS_API_KEY", "SD_DATABASE_URL", "QB_DATABASE_URL", "DASHBOARD_LOGIN_PASSWORD"]
+    lines = []
+    for v in vars_to_check:
+        val = os.getenv(v, "")
+        if val:
+            lines.append(f"{v}: SET ({val[:20]}...{val[-4:]})")
+        else:
+            lines.append(f"{v}: NOT SET")
+    return Pre("\n".join(lines))
+
+
 @rt("/_sd_close_panel")
 async def sd_close_panel(req):
     """Return empty content for HTMX to swap into the person-forms-panel."""

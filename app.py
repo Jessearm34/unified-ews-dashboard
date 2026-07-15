@@ -1355,6 +1355,16 @@ async def sd_person_forms(req):
                    Pre(traceback.format_exc(), style="font-size:10px;color:var(--muted);"))
 
 
+@rt("/_sd_clear_cache")
+async def sd_clear_cache(req):
+    """Clear the in-memory data cache so fresh data is loaded on next request."""
+    global _data_cache, _cache_ts, _chart_html_cache
+    _data_cache.clear()
+    _cache_ts.clear()
+    _chart_html_cache.clear()
+    return Pre("Cache cleared. Refresh the page to see fresh data.")
+
+
 @rt("/_sd_close_panel")
 async def sd_close_panel(req):
     """Return empty content for HTMX to swap into the person-forms-panel."""
@@ -1363,46 +1373,59 @@ async def sd_close_panel(req):
 
 @rt("/_sd_scrub")
 async def sd_scrub(req):
-    """One-shot: clean corrupted JSON values in sitedocs_form_responses table.
-
-    SiteDocs stores structured objects as dict-like strings in ItemValue.
-    This UPDATE extracts readable text (Label, Text, Name keys) or UUIDs
-    from the garbage and replaces the corrupted values in-place.
-    """
+    """One-shot: clean corrupted JSON values in sitedocs_form_responses table."""
     try:
         from sqlalchemy import text as _text
         from data.sd_data import sd_engine
+        import json as _json
         import re as _re
 
         eng = sd_engine()
+        lines = []
 
-        # Count rows with potentially corrupted values
-        count_total = 0
-        count_fixed = 0
-
+        # Check if table exists
         with eng.connect() as conn:
+            result = conn.execute(_text(
+                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sitedocs_form_responses')"
+            ))
+            exists = result.scalar()
+            lines.append(f"Table exists: {exists}")
+            if not exists:
+                eng.dispose()
+                return Pre("\n".join(lines))
+
+            # Get sample data first
+            sample = conn.execute(_text("SELECT \"ItemValue\" FROM sitedocs_form_responses LIMIT 5")).all()
+            lines.append(f"Sample values before scrub:")
+            for r in sample:
+                val = r[0]
+                lines.append(f"  raw={repr(str(val)[:120])}")
+
+            # Count and fix
+            count_total = 0
+            count_fixed = 0
+
             rows = conn.execute(_text(
                 "SELECT ctid, \"ItemValue\" FROM sitedocs_form_responses"
             )).all()
+            lines.append(f"Total rows: {len(rows)}")
 
             for ctid, raw in rows:
                 if not raw or raw == "nan":
+                    count_total += 1
                     continue
                 s = str(raw).strip()
                 cleaned = s.replace("\t", " ").replace("\r", " ").replace("\n", " ")
 
-                # Try to extract readable value via JSON
-                import json as _json
+                extracted = None
+
+                # Try JSON
                 fixed = cleaned
                 ob = fixed.count("{")
                 cb = fixed.count("}")
                 while cb < ob:
                     fixed += "}"
                     cb += 1
-
-                extracted = None
-
-                # Try JSON parse
                 try:
                     parsed = _json.loads(fixed)
                     if isinstance(parsed, dict):
@@ -1415,20 +1438,16 @@ async def sd_scrub(req):
                                 if isinstance(v, str) and v.strip():
                                     extracted = v
                                     break
+                            if extracted is None:
+                                extracted = str(parsed)
                     elif isinstance(parsed, list):
-                        parts = []
-                        for p in parsed[:3]:
-                            if isinstance(p, dict):
-                                parts.append(str(p.get("Text", p.get("Name", p.get("Label", p)))))
-                            else:
-                                parts.append(str(p))
-                        extracted = "; ".join(p for p in parts if p)
+                        extracted = "; ".join(str(p.get("Text", p.get("Name", p.get("Label", p)))) if isinstance(p, dict) else str(p) for p in parsed[:3])
                     else:
                         extracted = str(parsed)
-                except (_json.JSONDecodeError, TypeError, ValueError):
+                except Exception:
                     pass
 
-                # Try regex extraction
+                # Regex fallback
                 if extracted is None:
                     for pat in (r'"Label"\s*:\s*"([^"]+)"', r'"Text"\s*:\s*"([^"]+)"', r'"Name"\s*:\s*"([^"]+)"'):
                         m = _re.search(pat, s)
@@ -1436,7 +1455,7 @@ async def sd_scrub(req):
                             extracted = m.group(1).strip()
                             break
 
-                # Try UUID extraction
+                # UUID fallback
                 if extracted is None:
                     uuids = _re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', s)
                     if uuids:
@@ -1452,8 +1471,16 @@ async def sd_scrub(req):
 
             conn.commit()
 
+            # Verify after scrub
+            sample2 = conn.execute(_text("SELECT \"ItemValue\" FROM sitedocs_form_responses LIMIT 5")).all()
+            lines.append(f"Sample values after scrub:")
+            for r in sample2:
+                val = r[0]
+                lines.append(f"  clean={repr(str(val)[:120])}")
+
         eng.dispose()
-        return Pre(f"Scanned {count_total} rows. Fixed {count_fixed} corrupted values.")
+        lines.append(f"\nScanned {count_total} rows. Fixed {count_fixed}.")
+        return Pre("\n".join(lines))
     except Exception as e:
         import traceback
         return Pre(f"Error: {e}\n{traceback.format_exc()}")

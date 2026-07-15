@@ -1273,21 +1273,21 @@ async def sd_person_forms(req):
             return v
 
         # Build simple form list from metadata
-            form_panels = []
-            for _, frow in person_forms.head(10).iterrows():
-                fid = frow.get("Id") or frow.get("DocumentId", "")
-                dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
-                loc_id = str(frow.get("LocationId", ""))
-                loc_name = loc_map.get(loc_id, loc_id[:12]) if loc_id else "—"
-                label = frow.get("Label", frow.get("DocumentTemplateName", ""))
-                form_panels.append(
-                    f"<div style='padding:6px 0;border-bottom:1px solid var(--line);'>"
-                    f"<div><strong>{type_label}</strong> — {dt}</div>"
-                    f"<div class='note'>{label[:60]} · {loc_name}</div>"
-                    f"</div>"
-                )
+        form_panels = []
+        for _, frow in person_forms.head(10).iterrows():
+            fid = frow.get("Id") or frow.get("DocumentId", "")
+            dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
+            loc_id = str(frow.get("LocationId", ""))
+            loc_name = loc_map.get(loc_id, loc_id[:12]) if loc_id else "—"
+            label = frow.get("Label", frow.get("DocumentTemplateName", ""))
+            form_panels.append(
+                f"<div style='padding:6px 0;border-bottom:1px solid var(--line);'>"
+                f"<div><strong>{type_label}</strong> — {dt}</div>"
+                f"<div class='note'>{label[:60]} · {loc_name}</div>"
+                f"</div>"
+            )
 
-            all_content = "\n".join(form_panels) if form_panels else "No forms"
+        all_content = "\n".join(form_panels) if form_panels else "No forms"
 
         count = len(person_forms)
         return Div(

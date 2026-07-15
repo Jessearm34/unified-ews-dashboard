@@ -1443,18 +1443,15 @@ async def sd_lookup(req):
             for (tname,) in tables:
                 cols = conn.execute(_text(
                     "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name=:t AND data_type IN ('text','character varying')",
-                    {"t": tname}
+                    f"WHERE table_name='{tname}' AND data_type IN ('text','character varying')"
                 )).all()
                 for (cname,) in cols:
                     cnt = conn.execute(_text(
-                        f'SELECT COUNT(*) FROM "{tname}" WHERE "{cname}" = :uid',
-                        {"uid": uid}
+                        f"SELECT COUNT(*) FROM \"{tname}\" WHERE \"{cname}\" = '{uid}'"
                     )).scalar()
                     if cnt and cnt > 0:
                         sample = conn.execute(_text(
-                            f'SELECT * FROM "{tname}" WHERE "{cname}" = :uid LIMIT 1',
-                            {"uid": uid}
+                            f"SELECT * FROM \"{tname}\" WHERE \"{cname}\" = '{uid}' LIMIT 1"
                         )).fetchone()
                         name = ""
                         if sample:

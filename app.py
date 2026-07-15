@@ -1162,165 +1162,169 @@ async def sd_forms(req):
 @rt("/_sd_person_forms")
 async def sd_person_forms(req):
     """Show BBSO or RIR forms filed by a specific worker, with full field-level content."""
-    import json as _json
-    worker_id = req.query_params.get("worker_id", "")
-    form_type = req.query_params.get("type", "bbso")
-    ds = _cached("sd", load_sd)
-    if not ds or ds.forms.empty or not worker_id:
-        return Div("")
+    try:
+        import json as _json
+        worker_id = req.query_params.get("worker_id", "")
+        form_type = req.query_params.get("type", "bbso")
+        ds = _cached("sd", load_sd)
+        if not ds or ds.forms.empty or not worker_id:
+            return Div("")
 
-    # Resolve worker name
-    worker_name = worker_id[:12]
-    if not ds.workers.empty and "Id" in ds.workers.columns:
-        wm = ds.workers[ds.workers["Id"] == worker_id]
-        if not wm.empty:
-            w = wm.iloc[0]
-            worker_name = f"{w.get('FirstName','')} {w.get('LastName','')}".strip() or worker_id[:12]
-
-    # Resolve location names
-    loc_map = {}
-    if not ds.locations.empty and "Id" in ds.locations.columns:
-        for _, loc in ds.locations.iterrows():
-            loc_map[str(loc["Id"])] = str(loc.get("Name", ""))
-
-    # Filter forms by type and creator
-    forms = ds.forms.copy()
-    if form_type == "bbso":
-        from data.sd_data import _filter_bbso
-        filtered = _filter_bbso(forms)
-        type_label = "BBSO"
-    else:
-        from data.sd_data import _filter_rir
-        filtered = _filter_rir(forms)
-        type_label = "RIR / Near Miss"
-
-    col = "CreatedBy" if "CreatedBy" in filtered.columns else "createdBy"
-    if col not in filtered.columns:
-        return Div(P(f"No {type_label} forms found for {worker_name}", cls="note"))
-
-    person_forms = filtered[filtered[col] == worker_id].copy()
-    if person_forms.empty:
-        return Div(P(f"No {type_label} forms from {worker_name}", cls="note"))
-
-    date_col = "CreatedOn" if "CreatedOn" in person_forms.columns else "createdOn"
-    if date_col in person_forms.columns:
-        person_forms[date_col] = pd.to_datetime(person_forms[date_col], errors="coerce")
-        person_forms = person_forms.sort_values(date_col, ascending=False)
-
-    # Close/back button
-    close_btn = A("← Close", cls="preset", style="margin-bottom:10px;display:inline-block;",
-                  hx_get="/_sd_close_panel", hx_target="#person-forms-panel", hx_swap="innerHTML")
-
-    def clean_json(val):
-        if not val or val == "nan":
-            return ""
-        try:
-            p = _json.loads(val)
-            if isinstance(p, dict):
-                for k in ("Text", "Name", "Value", "Description", "Label"):
-                    if k in p and str(p[k]).strip():
-                        return str(p[k])
-                for v in p.values():
-                    if isinstance(v, str) and v.strip():
-                        return v
-                return str(p)
-            if isinstance(p, list):
-                parts = [clean_json(_json.dumps(x)) if isinstance(x, (dict, list)) else str(x) for x in p[:3]]
-                return "; ".join(pp for pp in parts if pp)
-            return str(p)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return str(val)
-
-    def resolve(val):
-        v = str(val).strip()
-        w_map = {}
+        # Resolve worker name
+        worker_name = worker_id[:12]
         if not ds.workers.empty and "Id" in ds.workers.columns:
-            for _, w in ds.workers.iterrows():
-                w_map[str(w["Id"])] = f"{w.get('FirstName','')} {w.get('LastName','')}".strip()
-        if v in w_map:
-            return w_map[v]
-        if v in loc_map:
-            return loc_map[v]
-        return v
+            wm = ds.workers[ds.workers["Id"] == worker_id]
+            if not wm.empty:
+                w = wm.iloc[0]
+                worker_name = f"{w.get('FirstName','')} {w.get('LastName','')}".strip() or worker_id[:12]
 
-    # Build content panels from form_responses
-    form_panels = []
-    for _, frow in person_forms.head(10).iterrows():
-        fid = frow.get("Id") or frow.get("DocumentId", "")
-        dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
-        loc_id = str(frow.get("LocationId", ""))
-        loc_name = loc_map.get(loc_id, loc_id[:12]) if loc_id else "—"
+        # Resolve location names
+        loc_map = {}
+        if not ds.locations.empty and "Id" in ds.locations.columns:
+            for _, loc in ds.locations.iterrows():
+                loc_map[str(loc["Id"])] = str(loc.get("Name", ""))
 
-        # Get responses for this form
-        form_items = []
-        if hasattr(ds, 'form_responses') and not ds.form_responses.empty:
-            fr = ds.form_responses[ds.form_responses["FormId"] == fid].copy()
-            if not fr.empty:
-                for grp_title, grp_df in fr.groupby("GroupTitle"):
-                    group_rows = []
-                    for _, item in grp_df.iterrows():
-                        q = item.get("ItemContent", "")
-                        raw = str(item.get("ItemValue", ""))
-                        val = clean_json(raw)
-                        val = resolve(val)
-                        comments = clean_json(str(item.get("Comments", "")))
-                        item_type = item.get("ItemType", "")
-                        # Safe/at-risk classification
-                        v_lower = val.strip().lower()
-                        if item_type in ("YesNo", "PassFailCounter", "Inspection") and grp_title != "Task Information":
-                            if v_lower in ("yes", "pass", "true", "safe", "1"):
-                                cls = "badge green"
-                                label = "Safe ✓"
-                            elif v_lower in ("no", "fail", "false", "0"):
-                                cls = "badge red"
-                                label = "At-Risk ✗"
+        # Filter forms by type and creator
+        forms = ds.forms.copy()
+        if form_type == "bbso":
+            from data.sd_data import _filter_bbso
+            filtered = _filter_bbso(forms)
+            type_label = "BBSO"
+        else:
+            from data.sd_data import _filter_rir
+            filtered = _filter_rir(forms)
+            type_label = "RIR / Near Miss"
+
+        col = "CreatedBy" if "CreatedBy" in filtered.columns else "createdBy"
+        if col not in filtered.columns:
+            return Div(P(f"No {type_label} forms found for {worker_name}", cls="note"))
+
+        person_forms = filtered[filtered[col] == worker_id].copy()
+        if person_forms.empty:
+            return Div(P(f"No {type_label} forms from {worker_name}", cls="note"))
+
+        date_col = "CreatedOn" if "CreatedOn" in person_forms.columns else "createdOn"
+        if date_col in person_forms.columns:
+            person_forms[date_col] = pd.to_datetime(person_forms[date_col], errors="coerce")
+            person_forms = person_forms.sort_values(date_col, ascending=False)
+
+        # Close/back button
+        close_btn = A("← Close", cls="preset", style="margin-bottom:10px;display:inline-block;",
+                      hx_get="/_sd_close_panel", hx_target="#person-forms-panel", hx_swap="innerHTML")
+
+        def clean_json(val):
+            if not val or val == "nan":
+                return ""
+            try:
+                p = _json.loads(val)
+                if isinstance(p, dict):
+                    for k in ("Text", "Name", "Value", "Description", "Label"):
+                        if k in p and str(p[k]).strip():
+                            return str(p[k])
+                    for v in p.values():
+                        if isinstance(v, str) and v.strip():
+                            return v
+                    return str(p)
+                if isinstance(p, list):
+                    parts = [clean_json(_json.dumps(x)) if isinstance(x, (dict, list)) else str(x) for x in p[:3]]
+                    return "; ".join(pp for pp in parts if pp)
+                return str(p)
+            except (_json.JSONDecodeError, TypeError, ValueError):
+                return str(val)
+
+        def resolve(val):
+            v = str(val).strip()
+            w_map = {}
+            if not ds.workers.empty and "Id" in ds.workers.columns:
+                for _, w in ds.workers.iterrows():
+                    w_map[str(w["Id"])] = f"{w.get('FirstName','')} {w.get('LastName','')}".strip()
+            if v in w_map:
+                return w_map[v]
+            if v in loc_map:
+                return loc_map[v]
+            return v
+
+        # Build content panels from form_responses
+        form_panels = []
+        for _, frow in person_forms.head(10).iterrows():
+            fid = frow.get("Id") or frow.get("DocumentId", "")
+            dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
+            loc_id = str(frow.get("LocationId", ""))
+            loc_name = loc_map.get(loc_id, loc_id[:12]) if loc_id else "—"
+
+            # Get responses for this form
+            form_items = []
+            if hasattr(ds, 'form_responses') and not ds.form_responses.empty:
+                fr = ds.form_responses[ds.form_responses["FormId"] == fid].copy()
+                if not fr.empty:
+                    for grp_title, grp_df in fr.groupby("GroupTitle"):
+                        group_rows = []
+                        for _, item in grp_df.iterrows():
+                            q = item.get("ItemContent", "")
+                            raw = str(item.get("ItemValue", ""))
+                            val = clean_json(raw)
+                            val = resolve(val)
+                            comments = clean_json(str(item.get("Comments", "")))
+                            item_type = item.get("ItemType", "")
+                            v_lower = val.strip().lower()
+                            if item_type in ("YesNo", "PassFailCounter", "Inspection") and grp_title != "Task Information":
+                                if v_lower in ("yes", "pass", "true", "safe", "1"):
+                                    cls = "badge green"
+                                    label = "Safe ✓"
+                                elif v_lower in ("no", "fail", "false", "0"):
+                                    cls = "badge red"
+                                    label = "At-Risk ✗"
+                                else:
+                                    cls = "badge"
+                                    label = val[:40]
                             else:
                                 cls = "badge"
-                                label = val[:40]
-                        else:
-                            cls = "badge"
-                            label = val[:60]
-                        comment_html = f"<br><span class='note'>{comments[:120]}</span>" if comments else ""
-                        group_rows.append(
-                            f"<tr><td style='padding:4px 10px;'>{q[:60]}</td>"
-                            f"<td style='padding:4px 10px;'><span class='{cls}'>{label}</span>{comment_html}</td></tr>"
-                        )
-                    grp_html = f"<tr style='background:#f8fafc;'><td colspan='2' style='padding:6px 10px;font-weight:700;font-size:12px;color:#475569;'>{grp_title}</td></tr>" + "".join(group_rows)
-                    form_items.append(grp_html)
+                                label = val[:60]
+                            comment_html = f"<br><span class='note'>{comments[:120]}</span>" if comments else ""
+                            group_rows.append(
+                                f"<tr><td style='padding:4px 10px;'>{q[:60]}</td>"
+                                f"<td style='padding:4px 10px;'><span class='{cls}'>{label}</span>{comment_html}</td></tr>"
+                            )
+                        grp_html = f"<tr style='background:#f8fafc;'><td colspan='2' style='padding:6px 10px;font-weight:700;font-size:12px;color:#475569;'>{grp_title}</td></tr>" + "".join(group_rows)
+                        form_items.append(grp_html)
 
-        all_content = "".join(form_items) if form_items else (
-            f"<tr><td colspan='2' class='note' style='padding:8px;'>No field-level responses loaded — run form_responses pipeline</td></tr>"
+            all_content = "".join(form_items) if form_items else (
+                f"<tr><td colspan='2' class='note' style='padding:8px;'>No field-level responses</td></tr>"
+            )
+
+            # Check for high-severity items for RIR
+            severity_badge = ""
+            if form_type != "bbso" and 'fr' in dir() and not fr.empty:
+                sev_rows = fr[fr["ItemContent"].str.contains("severity|potential", case=False, na=False)]
+                if not sev_rows.empty:
+                    sev_val = clean_json(str(sev_rows.iloc[0].get("ItemValue", "")))
+                    sev_val = resolve(sev_val)
+                    is_high = "high" in sev_val.lower()
+                    sev_cls = "badge red" if is_high else ("badge warn" if "medium" in sev_val.lower() else "badge")
+                    severity_badge = f" <span class='{sev_cls}'>{sev_val[:25]}</span>"
+
+            form_panels.append(
+                f"<div class='panel' style='margin-bottom:10px;padding:12px;'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;'>"
+                f"<div><strong>{type_label}</strong> — {dt}{severity_badge}</div>"
+                f"<span class='note'>{loc_name}</span></div>"
+                f"<table class='data' style='font-size:12px;'><tbody>{all_content}</tbody></table>"
+                f"</div>"
+            )
+
+        count = len(person_forms)
+        return Div(
+            close_btn,
+            H3(f"{type_label} forms from {worker_name} ({count})",
+               style="margin:0 0 10px;font-size:15px;"),
+            NotStr("\n".join(form_panels)),
+            cls="panel",
+            id="person-forms-panel",
         )
-
-        # Check for high-severity items for RIR
-        severity_badge = ""
-        if form_type != "bbso" and not fr.empty:
-            sev_rows = fr[fr["ItemContent"].str.contains("severity|potential", case=False, na=False)]
-            if not sev_rows.empty:
-                sev_val = clean_json(str(sev_rows.iloc[0].get("ItemValue", "")))
-                sev_val = resolve(sev_val)
-                is_high = "high" in sev_val.lower()
-                sev_cls = "badge red" if is_high else ("badge warn" if "medium" in sev_val.lower() else "badge")
-                severity_badge = f" <span class='{sev_cls}'>{sev_val[:25]}</span>"
-
-        form_panels.append(
-            f"<div class='panel' style='margin-bottom:10px;padding:12px;'>"
-            f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;'>"
-            f"<div><strong>{type_label}</strong> — {dt}{severity_badge}</div>"
-            f"<span class='note'>{loc_name}</span></div>"
-            f"<table class='data' style='font-size:12px;'><tbody>{all_content}</tbody></table>"
-            f"</div>"
-        )
-
-    count = len(person_forms)
-    return Div(
-        close_btn,
-        H3(f"{type_label} forms from {worker_name} ({count})",
-           style="margin:0 0 10px;font-size:15px;"),
-        NotStr("\n".join(form_panels)),
-        cls="panel",
-        id="person-forms-panel",
-    )
+    except Exception as e:
+        import traceback
+        return Div(P(f"Error loading forms: {e}", cls="note"),
+                   Pre(traceback.format_exc(), style="font-size:10px;color:var(--muted);"))
 
 
 @rt("/_sd_close_panel")

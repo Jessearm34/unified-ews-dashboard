@@ -1455,7 +1455,9 @@ async def sd_lookup(req):
                         )).fetchone()
                         name = ""
                         if sample:
-                            sd = dict(sample)
+                            # Build dict from row safely (works with SQLAlchemy 1.x)
+                            keys = [desc[0] for desc in conn.execute(_text(f"SELECT * FROM \"{tname}\" LIMIT 0")).cursor.description]
+                            sd = {k: sample[i] for i, k in enumerate(keys)}
                             for k in ("Name", "label", "DocumentTemplateName", "Description", "FirstName"):
                                 if k in sd and str(sd[k]).strip():
                                     name = f" → {str(sd[k])[:60]}"

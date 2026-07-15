@@ -1371,6 +1371,43 @@ async def check_env(req):
     return Pre("\n".join(lines))
 
 
+@rt("/_sd_raw_form")
+async def sd_raw_form(req):
+    """Debug: fetch one BBSO form from SiteDocs API and dump its Groups/Items structure."""
+    try:
+        import requests, json
+        api_key = os.getenv("SITEDOCS_API_KEY", "")
+        api_base = os.getenv("SITEDOCS_API_BASE", "https://api-1.sitedocs.com")
+        from data.sd_data import _filter_bbso
+        ds = _cached("sd", load_sd)
+        if not ds or ds.forms.empty:
+            return Pre("No forms data")
+        bbso = _filter_bbso(ds.forms)
+        if bbso.empty:
+            return Pre("No BBSO forms found")
+        fid = bbso.iloc[0].get("Id") or bbso.iloc[0].get("DocumentId", "")
+        url = f"{api_base}/api/v1/forms/content/{fid}"
+        resp = requests.get(url, headers={"Authorization": api_key, "Accept": "application/json"}, timeout=15)
+        data = resp.json()
+        lines = [f"HTTP {resp.status_code}", f"Top keys: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}"]
+        if isinstance(data, dict):
+            groups = data.get("Groups", [])
+            lines.append(f"Groups count: {len(groups)}")
+            for i, g in enumerate(groups):
+                gtitle = g.get("Title", "?")
+                items = g.get("Items", [])
+                lines.append(f"  Group {i}: '{gtitle}' — {len(items)} items")
+                for j, item in enumerate(items[:3]):
+                    q = item.get("Content", "")
+                    v = item.get("Value")
+                    t = item.get("Type", "")
+                    lines.append(f"    Item {j}: type={t} q='{q}' value_type={type(v).__name__} value={str(v)[:80]}")
+        return Pre("\n".join(lines))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\n{traceback.format_exc()}")
+
+
 @rt("/_sd_close_panel")
 async def sd_close_panel(req):
     """Return empty content for HTMX to swap into the person-forms-panel."""

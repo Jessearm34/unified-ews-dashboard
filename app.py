@@ -1611,7 +1611,7 @@ async def sd_person_forms(req):
         form_panels = []
         import requests
 
-        for _, frow in person_forms.head(5).iterrows():
+        for _, frow in person_forms.iterrows():
             fid = frow.get("Id") or frow.get("DocumentId", "")
             dt = str(frow.get(date_col, ""))[:10] if date_col in frow else ""
             loc_id = str(frow.get("LocationId", ""))

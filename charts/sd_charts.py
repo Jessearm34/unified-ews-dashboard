@@ -367,11 +367,12 @@ def bbso_rir_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame) -> st
     rows = []
     for _, r in df.iterrows():
         eng = r["HSE_Engagement"]
+        wid = r.get("WorkerId", "")
         eng_cls = "badge green" if eng >= 2.0 else ("badge" if eng >= 1.0 else "badge red")
         rows.append(f"""<tr>
             <td>{r['Worker']}</td>
-            <td class='num'>{int(r['BBSO'])}</td>
-            <td class='num'>{int(r['RIR'])}</td>
+            <td class='num clickable' hx-get="/_sd_worker_bbso?worker_id={wid}&type=bbso" hx-target="#sd-forms-list">{int(r['BBSO'])}</td>
+            <td class='num clickable' hx-get="/_sd_worker_bbso?worker_id={wid}&type=rir" hx-target="#sd-forms-list">{int(r['RIR'])}</td>
             <td><span class='{eng_cls}'>{eng}</span></td>
         </tr>""")
     header = """<tr><th>Worker</th><th>BBSO</th><th>RIR</th><th>HSE Engagement</th></tr>"""

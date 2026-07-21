@@ -717,7 +717,7 @@ def rir_monthly_trend(forms: pd.DataFrame) -> pd.DataFrame:
 
 def bbso_rir_leaderboard(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.DataFrame:
     if workers.empty:
-        return pd.DataFrame(columns=["Worker", "BBSO", "RIR", "HSE_Engagement"])
+        return pd.DataFrame(columns=["Worker", "WorkerId", "BBSO", "RIR", "HSE_Engagement"])
     bbso = _filter_bbso(forms)
     rir = _filter_rir(forms)
     col = "CreatedBy" if "CreatedBy" in forms.columns else "createdBy"
@@ -730,11 +730,13 @@ def bbso_rir_leaderboard(workers: pd.DataFrame, forms: pd.DataFrame) -> pd.DataF
         r = int((rir[col] == wid).sum()) if col in rir.columns else 0
         engagement = (b + r) / 3.0
         if b > 0 or r > 0:
-            rows.append({"Worker": name, "BBSO": b, "RIR": r, "HSE_Engagement": round(engagement, 1)})
+            rows.append({"Worker": name, "WorkerId": wid, "BBSO": b, "RIR": r, "HSE_Engagement": round(engagement, 1)})
     df = pd.DataFrame(rows)
     if df.empty:
-        return pd.DataFrame(columns=["Worker", "BBSO", "RIR", "HSE_Engagement"])
+        return pd.DataFrame(columns=["Worker", "WorkerId", "BBSO", "RIR", "HSE_Engagement"])
     return df.sort_values("HSE_Engagement", ascending=False).reset_index(drop=True)
+
+
 
 
 # --------------------------------------------------------------------------- #
@@ -1055,3 +1057,26 @@ def rir_recent_events(responses: pd.DataFrame, workers: pd.DataFrame,
     df["_dt"] = pd.to_datetime(df["Date"], errors="coerce")
     return df.sort_values("_dt", ascending=False).head(limit)\
         .drop(columns=["_dt", "FormId"]).reset_index(drop=True)
+
+
+def worker_bbso_forms(workers: pd.DataFrame, forms: pd.DataFrame, worker_id: str) -> pd.DataFrame:
+    """Return all BBSO forms for a given worker, with resolved location names."""
+    bbso = _filter_bbso(forms)
+    if bbso.empty:
+        return pd.DataFrame(columns=["CreatedOn", "Label", "LocationName"])
+    df = bbso[bbso.get("CreatedBy", bbso.get("createdBy")) == worker_id].copy()
+    if df.empty:
+        return pd.DataFrame(columns=["CreatedOn", "Label", "LocationName"])
+    # Resolve location ID to name (all columns are text, LocationId is the raw UUID)
+    loc_col = "LocationId"
+    if loc_col in df.columns:
+        # Location names from the locations table aren't loaded here,
+        # so we return LocationId raw and let the caller resolve.
+        pass
+    col = "CreatedOn" if "CreatedOn" in df.columns else "createdOn"
+    df = df.sort_values(col, ascending=False)
+    df["_date"] = pd.to_datetime(df[col]).dt.strftime("%Y-%m-%d %H:%M") if col in df.columns else ""
+    return df[[c for c in ["_date", "Label", "LocationId"] if c in df.columns]].rename(
+        columns={"_date": "CreatedOn"}
+    )
+

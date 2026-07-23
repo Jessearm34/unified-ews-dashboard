@@ -1077,229 +1077,261 @@ def render_sd_section(section_key):
 
 # ── GeoTab Section Renderer ──────────────────────────────────────────
 
-_GT_COLORS = {
-    "primary": "#2563eb", "secondary": "#0e7490",
-    "good": "#16a34a", "warn": "#ea580c", "bad": "#dc2626",
-}
-
-def _gt_line(rows, x, y, color="#2563eb", label=None):
-    if not rows: return empty("No data")
-    df = pd.DataFrame(rows)
-    if df[y].sum() == 0: return empty("No data for this period")
-    df["d"] = pd.to_datetime(df[x])
-    fig = go.Figure(go.Scatter(x=df["d"], y=df[y], mode="lines+markers",
-        line=dict(color=color, width=2.5, shape="spline"), marker=dict(size=5),
-        fill="tozeroy", fillcolor=_rgba(color, 0.10),
-        name=label or y, hovertemplate="%{x|%b %d}<br>%{y:,.1f}<extra></extra>"))
-    fig.update_layout(showlegend=bool(label), margin=dict(l=10, r=10, t=5, b=10),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, sans-serif", size=11),
-        yaxis=dict(gridcolor="#e2e8f0"), xaxis=dict(gridcolor="#f1f5f9"))
-    return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
-
-def _gt_bar(rows, x, y, color="#2563eb", h=True):
-    if not rows: return empty("No data")
-    fig = go.Figure(go.Bar(x=[r[x] if h else r[y] for r in rows],
-        y=[r[y] if h else r[x] for r in rows],
-        orientation="h" if h else "v", marker=dict(color=color),
-        hovertemplate="%{y}<br>%{x:,.1f}<extra></extra>"))
-    fig.update_layout(margin=dict(l=10, r=10, t=5, b=10),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, sans-serif", size=11),
-        yaxis=dict(autorange="reversed" if h else None, gridcolor="#e2e8f0"),
-        xaxis=dict(gridcolor="#f1f5f9"))
-    return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
-
-def _gt_stacked_bar(rows, x, cats, colors=None):
-    if not rows: return empty("No data")
-    df = pd.DataFrame(rows)
-    df["d"] = pd.to_datetime(df[x])
-    colors = colors or {}
-    fig = go.Figure()
-    for cat in cats:
-        if cat in df.columns:
-            c = colors.get(cat, "#2563eb")
-            fig.add_trace(go.Bar(x=df["d"], y=df[cat], name=cat.replace("_"," ").title(),
-                marker=dict(color=c), hovertemplate="%{x|%b %d}<br>%{y}<extra></extra>"))
-    fig.update_layout(barmode="stack", showlegend=True,
-        legend=dict(orientation="h", y=1.1, font=dict(size=9)),
+def _fig_html(fig):
+    fig.update_layout(
         margin=dict(l=10, r=10, t=5, b=10),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, sans-serif", size=11),
-        yaxis=dict(gridcolor="#e2e8f0"), xaxis=dict(gridcolor="#f1f5f9"))
+        font=dict(family="Inter, system-ui, sans-serif", size=11),
+        yaxis=dict(gridcolor="#e2e8f0"), xaxis=dict(gridcolor="#f1f5f9"),
+    )
     return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
 
-def _gt_hist(values, color="#ea580c"):
-    if not values: return empty("No data")
-    fig = go.Figure(go.Histogram(x=values, marker=dict(color=color),
-        hovertemplate="%{x:.0f}<br>%{y} records<extra></extra>"))
-    fig.update_layout(margin=dict(l=10, r=10, t=5, b=10),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, sans-serif", size=11),
-        yaxis=dict(gridcolor="#e2e8f0"), xaxis=dict(gridcolor="#f1f5f9"))
-    return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
-
-def _gt_table(headers, rows_data, num_cols=None):
-    if not rows_data: return empty("No data")
-    num_cols = num_cols or set()
-    trs = ""
-    for row in rows_data:
-        cells = ""
-        for i, val in enumerate(row):
-            cls = "num" if i in num_cols else ""
-            cells += f"<td class='{cls}'>{val}</td>"
-        trs += f"<tr>{cells}</tr>"
-    ths = "".join(f"<th>{h}</th>" for h in headers)
-    return f"<div class='tbl-wrap'><table class='data'><thead><tr>{ths}</tr></thead><tbody>{trs}</tbody></table></div>"
+def _gt_controls(section_key, range_key):
+    btns = []
+    for rk, rl in RANGE_PRESETS:
+        active = "active" if range_key == rk else ""
+        btns.append(Button(rl, cls=f"preset {active}",
+            hx_get=f"/view?platform=gt&section={section_key}&range={rk}", hx_target="#content"))
+    return Div(Span("Range:", cls="lbl"), *btns, cls="controls")
 
 
-def render_gt_section(section_key, range_key="all"):
-    from datetime import datetime, timedelta, timezone
-    import pandas as pd, plotly.graph_objects as go
-
+def render_gt_section(section_key="fleet", range_key="all"):
     start, end = resolve_date_range(range_key)
     since = datetime.combine(start, datetime.min.time()).replace(tzinfo=timezone.utc)
     until = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)
-
-    # Range controls
-    def _gt_controls():
-        btns = []
-        for rk, rl in RANGE_PRESETS:
-            active = "active" if range_key == rk else ""
-            btns.append(Button(rl, cls=f"preset {active}",
-                hx_get=f"/view?platform=gt&section={section_key}&range={rk}", hx_target="#content"))
-        return Div(Span("Range:", cls="lbl"), *btns, cls="controls")
-
-    def gt_kpi(label, value, hint="", color=""):
-        dot = Span(cls="dot", style=f"background:{color or '#2563eb'}")
-        if value is None: val = "—"
-        elif isinstance(value, float):
-            if value == int(value): val = f"{int(value):,}"
-            else: val = f"{value:,.1f}"
-        else: val = f"{value:,}"
-        return Div(Div(label, cls="k-label"), Div(val, cls="k-value"),
-                   Div(hint, cls="k-hint") if hint else "", cls="kpi")
+    I = "#2563eb"
+    ctrl = _gt_controls(section_key, range_key)
 
     # ── Fleet Overview ──
     if section_key == "fleet":
-        summary = GT.fleet_summary(since, until)
-        trends = GT.daily_trends(since, until)
-        utilization = GT.vehicle_utilization(since, until)
-        idling = GT.idling_summary(since, until)
-        speed = GT.speed_analysis(since, until)
-        drivers = GT.driver_metrics(since, until)
+        s = GT.fleet_summary(since, until)
+        tr = GT.daily_trends(since, until)
+        ut = GT.vehicle_utilization(since, until)
+        il = GT.idling_summary(since, until)
+        sp = GT.speed_analysis(since, until)
 
-        kpis = Div(
-            gt_kpi("Active Vehicles", summary["active_vehicles"], f"of {summary['total_vehicles']} total", _GT_COLORS["primary"]),
-            gt_kpi("Fleet Miles", summary["total_fleet_miles"], "", _GT_COLORS["primary"]),
-            gt_kpi("Avg Speed", round(speed.get("avg_speed", 0), 1), f"Max {round(speed.get('max_speed', 0), 1)} mph", _GT_COLORS["warn"]),
-            gt_kpi("Speeding Events", speed.get("speeding_count", 0), "", _GT_COLORS["bad"]),
+        kpi_row = Div(
+            _kpi("Active Vehicles", s["active_vehicles"], f"of {s['total_vehicles']}"),
+            _kpi("Fleet Miles", s["total_fleet_miles"]),
+            _kpi("Avg Speed", round(sp.get("avg_speed",0),1), f"Max {round(sp.get('max_speed',0),1)} mph"),
+            _kpi("Speeding", sp.get("speeding_count",0)),
             cls="kpis",
         )
 
-        charts = Div(
-            Div(panel("Daily Mileage Trend", _gt_line(trends, "day", "mileage", _GT_COLORS["primary"])),
-                panel("Vehicle Utilization", _gt_bar(utilization, "label", "utilization_percentage", _GT_COLORS["primary"])),
-                cls="grid two"),
-            Div(panel("Speed Distribution", _gt_hist(speed.get("speed_distribution", []), _GT_COLORS["warn"])),
-                panel("Idle Time by Vehicle", _gt_bar(idling.get("vehicles", []), "label", "idle_pct", _GT_COLORS["warn"])),
-                cls="grid two mt"),
-            Div(panel("Vehicle Details", NotStr(_gt_table(
-                ["Vehicle/Driver", "Miles", "Hours", "Util %"],
-                [[u.get("assigned_driver","") or u["label"], f"{u['total_miles']:,.0f}", f"{u['hours_driven']:.1f}", f"{u['utilization_percentage']:.1f}%"] for u in utilization],
-                num_cols={1,2,3})), scroll=True), cls="grid mt"),
-        )
+        # Mileage trend line chart
+        mt_html = _empty
+        if tr:
+            df = pd.DataFrame(tr)
+            if df["mileage"].sum() > 0:
+                df["d"] = pd.to_datetime(df["day"])
+                fig = go.Figure(go.Scatter(x=df["d"], y=df["mileage"],
+                    mode="lines+markers", line=dict(color=I, width=2.5, shape="spline"),
+                    marker=dict(size=5), fill="tozeroy", fillcolor=_rgba(I, 0.10),
+                    hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
+                mt_html = _fig_html(fig)
 
-        return _gt_controls(), kpis, charts
+        # Utilization bar chart
+        ul_html = _empty
+        if ut:
+            top = [u for u in ut if u["total_miles"] > 0]
+            if top:
+                labels = [u.get("assigned_driver","") or u["label"] for u in top]
+                fig = go.Figure(go.Bar(x=[u["total_miles"] for u in top], y=labels,
+                    orientation="h", marker=dict(color=I),
+                    hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
+                fig.update_layout(yaxis=dict(autorange="reversed"))
+                ul_html = _fig_html(fig)
+
+        # Speed histogram
+        sh_html = _empty
+        sd = sp.get("speed_distribution", [])
+        if sd:
+            fig = go.Figure(go.Histogram(x=sd, marker=dict(color="#ea580c"),
+                hovertemplate="%{x:.0f} mph<br>%{y} records<extra></extra>"))
+            sh_html = _fig_html(fig)
+
+        # Idle bar chart
+        ih_html = _empty
+        iv = il.get("vehicles", [])
+        if iv:
+            active = [v for v in iv if v["idle_pct"] > 0][:10]
+            if active:
+                labels = [v.get("assigned_driver","") or v["label"] for v in active]
+                fig = go.Figure(go.Bar(x=[v["idle_pct"] for v in active], y=labels,
+                    orientation="h", marker=dict(color="#ea580c"),
+                    hovertemplate="%{y}<br>%{x:.1f}%<extra></extra>"))
+                fig.update_layout(yaxis=dict(autorange="reversed"))
+                ih_html = _fig_html(fig)
+
+        # Vehicle detail table
+        vt_html = _empty
+        if ut:
+            def _vt():
+                h = ["Vehicle/Driver", "Miles", "Hours", "Util %"]
+                trs = ""
+                for u in ut:
+                    lbl = u.get("assigned_driver","") or u["label"]
+                    trs += f"<tr><td>{lbl}</td><td class='num'>{u['total_miles']:,.0f}</td>"
+                    trs += f"<td class='num'>{u['hours_driven']:.1f}</td>"
+                    trs += f"<td class='num'>{u['utilization_percentage']:.1f}%</td></tr>"
+                return f"<div class='tbl-wrap'><table class='data'><thead><tr>{''.join(f'<th>{c}</th>' for c in h)}</tr></thead><tbody>{trs}</tbody></table></div>"
+            vt_html = _vt()
+
+        return ctrl, kpi_row, Div(
+            Div(panel("Daily Mileage", mt_html, dot=I), panel("Vehicle Utilization", ul_html, dot=I), cls="grid two"),
+            Div(panel("Speed Distribution", sh_html, dot="#ea580c"), panel("Idle Time", ih_html, dot="#ea580c"), cls="grid two mt"),
+            Div(panel("Vehicle Details", NotStr(vt_html), scroll=True), cls="grid mt"),
+        )
 
     # ── Safety ──
     if section_key == "safety":
-        seatbelt = GT.seatbelt_analysis(since, until)
-        after_hrs = GT.after_hours_analysis(since, until)
-        safety_drivers = GT.safety_driver_rankings(since, until)
+        sb = GT.seatbelt_analysis(since, until)
+        ah = GT.after_hours_analysis(since, until)
+        sd = GT.safety_driver_rankings(since, until)
 
-        sb_colors = {"seatbelt_off": _GT_COLORS["bad"], "seatbelt_on": _GT_COLORS["good"]}
-        ah_colors = {"work_miles": _GT_COLORS["primary"], "after_hours_miles": _GT_COLORS["warn"]}
+        # Seatbelt stacked bar
+        sb_html = _empty
+        if sb:
+            df = pd.DataFrame(sb)
+            if df["seatbelt_off"].sum() > 0 or df["seatbelt_on"].sum() > 0:
+                df["d"] = pd.to_datetime(df["day"])
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=df["d"], y=df["seatbelt_off"], name="No Belt",
+                    marker=dict(color="#dc2626"), hovertemplate="%{x|%b %d}<br>%{y}<extra></extra>"))
+                fig.add_trace(go.Bar(x=df["d"], y=df["seatbelt_on"], name="Belt On",
+                    marker=dict(color="#16a34a")))
+                fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
+                sb_html = _fig_html(fig)
 
-        # Safety score bar chart
-        sd_chart = empty("No driver data")
-        if safety_drivers:
-            active = [d for d in safety_drivers if d["trip_count"] > 0][:15]
+        # After-hours stacked bar
+        ah_html = _empty
+        if ah:
+            df = pd.DataFrame(ah)
+            if df["after_hours_miles"].sum() > 0 or df["work_miles"].sum() > 0:
+                df["d"] = pd.to_datetime(df["day"])
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=df["d"], y=df["work_miles"], name="Work",
+                    marker=dict(color=I), hovertemplate="%{x|%b %d}<br>%{y:.0f} mi<extra></extra>"))
+                fig.add_trace(go.Bar(x=df["d"], y=df["after_hours_miles"], name="After-Hours",
+                    marker=dict(color="#ea580c")))
+                fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
+                ah_html = _fig_html(fig)
+
+        # Safety score chart
+        sc_html = _empty
+        sd_table_html = _empty
+        if sd:
+            active = [d for d in sd if d["trip_count"] > 0][:15]
             if active:
-                sd_colors = [_GT_COLORS["good"] if s["score"] >= 80 else _GT_COLORS["warn"] if s["score"] >= 60 else _GT_COLORS["bad"] for s in active]
+                colors = ["#16a34a" if s["score"]>=80 else "#ea580c" if s["score"]>=60 else "#dc2626" for s in active]
                 fig = go.Figure(go.Bar(x=[d["score"] for d in active], y=[d["name"] for d in active],
-                    orientation="h", marker=dict(color=sd_colors),
+                    orientation="h", marker=dict(color=colors),
                     hovertemplate="%{y}<br>Score: %{x}<extra></extra>"))
-                fig.update_layout(xaxis=dict(range=[0, 100], gridcolor="#e2e8f0"),
-                    yaxis=dict(autorange="reversed", gridcolor="#f1f5f9"),
-                    margin=dict(l=10, r=10, t=5, b=10),
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(family="Inter, sans-serif", size=11))
-                sd_chart = fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
+                fig.update_layout(xaxis=dict(range=[0,100]), yaxis=dict(autorange="reversed"))
+                sc_html = _fig_html(fig)
 
-        sd_table = empty("No driver data")
-        if safety_drivers:
             trs = ""
-            for d in safety_drivers[:20]:
-                bg = "green" if d["score"] >= 80 else "warn" if d["score"] >= 60 else "red"
+            for d in sd[:20]:
+                bg = "green" if d["score"]>=80 else "warn" if d["score"]>=60 else "red"
                 trs += f"<tr><td>{d['name']}</td><td class='num'>{d['trip_count']}</td>"
-                trs += f"<td class='num'>{d['seatbelt_violation_pct']:.1f}%</td>"
-                trs += f"<td class='num'>{d['after_hours_pct']:.1f}%</td>"
-                trs += f"<td class='num'>{d['idle_pct']:.1f}%</td>"
-                trs += f"<td class='num'>{d['speeding_pct']:.1f}%</td>"
+                trs += f"<td class='num'>{d['seatbelt_violation_pct']:.0f}%</td>"
+                trs += f"<td class='num'>{d['after_hours_pct']:.0f}%</td>"
+                trs += f"<td class='num'>{d['idle_pct']:.0f}%</td>"
+                trs += f"<td class='num'>{d['speeding_pct']:.0f}%</td>"
                 trs += f"<td><span class='badge {bg}'>{d['score']}</span></td></tr>"
-            sd_table = f"<div class='tbl-wrap' style='max-height:400px'><table class='data'><thead><tr><th>Driver</th><th class='num'>Trips</th><th class='num'>Seatbelt %</th><th class='num'>After-Hrs %</th><th class='num'>Idle %</th><th class='num'>Speeding %</th><th class='num'>Score</th></tr></thead><tbody>{trs}</tbody></table></div>"
+            sd_table_html = f"<div class='tbl-wrap' style='max-height:400px'><table class='data'><thead><tr><th>Driver</th><th class='num'>Trips</th><th class='num'>Seatbelt</th><th class='num'>After-Hrs</th><th class='num'>Idle</th><th class='num'>Speeding</th><th class='num'>Score</th></tr></thead><tbody>{trs}</tbody></table></div>"
 
-        return _gt_controls(), Div(
-            Div(panel("Seatbelt Violations", _gt_stacked_bar(seatbelt, "day", ["seatbelt_off", "seatbelt_on"], sb_colors)),
-                panel("Work vs After-Hours", _gt_stacked_bar(after_hrs, "day", ["work_miles", "after_hours_miles"], ah_colors)),
-                cls="grid two"),
-            Div(panel("Driver Safety Score", sd_chart),
-                panel("Safety Details", NotStr(sd_table), scroll=True),
-                cls="grid two mt"),
+        return ctrl, Div(
+            Div(panel("Seatbelt Violations", sb_html, dot="#dc2626"), panel("Work vs After-Hours", ah_html, dot="#ea580c"), cls="grid two"),
+            Div(panel("Driver Safety Score", sc_html, dot="#16a34a"), panel("Safety Details", NotStr(sd_table_html), scroll=True), cls="grid two mt"),
         )
 
     # ── Exceptions ──
     if section_key == "exceptions":
         exc = GT.exception_analysis(since, until)
+        total = exc.get("total", 0)
+        if total == 0:
+            return ctrl, Div(H2("No Exceptions"), Div("No exception events in this period.", cls="chart-empty"))
+
         by_type = exc.get("by_type", [])
         by_vehicle = exc.get("by_vehicle", [])
-        daily = exc.get("daily_trend", {})
 
-        exc_charts = Div(H2(f"Exceptions ({exc.get('total', 0)} total)"),
-            Div(panel("By Type", _gt_bar(by_type, "event_type", "count", _GT_COLORS["bad"])),
-                panel("By Vehicle", _gt_bar(by_vehicle, "vehicle", "count", _GT_COLORS["warn"])),
-                cls="grid two"),
-        ) if exc.get("total", 0) > 0 else Div(H2("No Exceptions"), Div("No exception events in this period.", cls="chart-empty"))
+        bt_html = _empty
+        if by_type:
+            fig = go.Figure(go.Bar(x=[t["count"] for t in by_type], y=[t["event_type"] for t in by_type],
+                orientation="h", marker=dict(color="#dc2626"),
+                hovertemplate="%{y}<br>%{x}<extra></extra>"))
+            fig.update_layout(yaxis=dict(autorange="reversed"))
+            bt_html = _fig_html(fig)
 
-        return _gt_controls(), exc_charts
+        bv_html = _empty
+        if by_vehicle:
+            labels = [v.get("driver","") or v["vehicle"] for v in by_vehicle]
+            fig = go.Figure(go.Bar(x=[v["count"] for v in by_vehicle], y=labels,
+                orientation="h", marker=dict(color="#ea580c"),
+                hovertemplate="%{y}<br>%{x}<extra></extra>"))
+            fig.update_layout(yaxis=dict(autorange="reversed"))
+            bv_html = _fig_html(fig)
+
+        return ctrl, Div(
+            Div(H2(f"Exceptions ({total})"), cls="header"),
+            Div(panel("By Type", bt_html, dot="#dc2626"), panel("By Vehicle", bv_html, dot="#ea580c"), cls="grid two"),
+        )
 
     # ── Maintenance ──
     if section_key == "maintenance":
-        maint = GT.vehicle_maintenance_status(since, until)
-        faults = GT.maintenance_metrics(since, until)
+        mt = GT.vehicle_maintenance_status(since, until)
+        fl = GT.maintenance_metrics(since, until)
 
-        # Odometer chart
-        odom_active = [v for v in maint if v["odo_mi"] > 0]
-        odom_chart = _gt_bar(odom_active, "label", "odo_mi", _GT_COLORS["primary"]) if odom_active else empty("No odometer data")
+        active_mt = [v for v in mt if v.get("odo_mi",0) > 0]
+        odom_html = _empty
+        if active_mt:
+            fig = go.Figure(go.Bar(x=[v["odo_mi"] for v in active_mt],
+                y=[v["label"] for v in active_mt],
+                orientation="h", marker=dict(color=I),
+                hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
+            fig.update_layout(yaxis=dict(autorange="reversed"))
+            odom_html = _fig_html(fig)
 
-        # Fault chart
-        freq = faults.get("fault_frequency", [])
-        fault_chart = _gt_bar(freq, "fault_code", "count", _GT_COLORS["bad"]) if freq else empty("No faults")
+        freq = fl.get("fault_frequency", [])
+        flt_html = _empty
+        if freq:
+            fig = go.Figure(go.Bar(x=[f["count"] for f in freq], y=[f["fault_code"] for f in freq],
+                orientation="h", marker=dict(color="#dc2626"),
+                hovertemplate="%{y}<br>%{x}<extra></extra>"))
+            fig.update_layout(yaxis=dict(autorange="reversed"))
+            flt_html = _fig_html(fig)
 
-        # Maint table
-        mt_rows = [[v["label"], f"{v['odo_mi']:,.0f}", f"{v['engine_hours']:,.0f}", f"{v['total_miles']:,.0f}", str(v["trip_count"])] for v in maint if v.get("odo_mi",0) > 0 or v.get("engine_hours",0) > 0]
+        mt_rows = [[v["label"], f"{v['odo_mi']:,.0f}", f"{v['engine_hours']:,.0f}", f"{v['total_miles']:,.0f}", str(v["trip_count"])]
+                   for v in mt if v.get("odo_mi",0) > 0 or v.get("engine_hours",0) > 0]
+        mtt_html = _empty
+        if mt_rows:
+            h = ["Vehicle/Driver", "Odometer (mi)", "Engine Hrs", "Trip Miles", "Trips"]
+            trs_parts = []
+            for r in mt_rows:
+                cells = "".join(f'<td class="num">{c}</td>' if i else f"<td>{c}</td>" for i, c in enumerate(r))
+                trs_parts.append(f"<tr>{cells}</tr>")
+            trs = "".join(trs_parts)
+            mtt_html = f"<div class='tbl-wrap' style='max-height:400px'><table class='data'><thead><tr>{''.join(f'<th>{c}</th>' for c in h)}</tr></thead><tbody>{trs}</tbody></table></div>"
 
-        return _gt_controls(), Div(
-            Div(panel("Vehicle Odometer", odom_chart),
-                panel("Fault Frequency", fault_chart),
-                cls="grid two"),
-            Div(panel("Maintenance Status", NotStr(_gt_table(
-                ["Vehicle/Driver", "Odometer (mi)", "Engine Hrs", "Trip Miles", "Trips"],
-                mt_rows, num_cols={1,2,3,4})), scroll=True), cls="grid mt"),
+        return ctrl, Div(
+            Div(panel("Vehicle Odometer", odom_html, dot=I), panel("Fault Frequency", flt_html, dot="#dc2626"), cls="grid two"),
+            Div(panel("Maintenance Status", NotStr(mtt_html), scroll=True), cls="grid mt"),
         )
 
-    return Div(H2("GeoTab"), Div("Section not found.", cls="chart-empty"))
+    return ctrl, Div(H2("GeoTab"), Div("Section not found.", cls="chart-empty"))
+
+
+_empty = Div("No data for this period.", cls="chart-empty")
+
+
+def _kpi(label, value, hint=""):
+    if value is None: val = "—"
+    elif isinstance(value, float):
+        val = f"{int(value):,}" if value == int(value) else f"{value:,.1f}"
+    else: val = f"{value:,}"
+    return Div(Div(label, cls="k-label"), Div(val, cls="k-value"),
+               Div(hint, cls="k-hint") if hint else "", cls="kpi")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────

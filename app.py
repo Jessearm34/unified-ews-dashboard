@@ -1350,13 +1350,17 @@ async def gt_check_vehicles(req):
             tcount = conn.execute(text("SELECT COUNT(*) FROM trips")).scalar()
             trange = conn.execute(text("SELECT MIN(start_time) as min_ts, MAX(start_time) as max_ts FROM trips")).one()
         parts = [f"Trips: {tcount} total, from {trange.min_ts} to {trange.max_ts}"]
-        parts.append(f"Range all: {date(2020,1,1)} to {date.today()}")
-        # Test fleet_summary
+        end_date = date.today()
+        parts.append(f"Range all: {date(2020,1,1)} to {end_date}")
+        parts.append(f"resolve_date_range('all'): start={date(2020,1,1)} end={date(end_date.year, end_date.month, 1) - timedelta(days=1)}")
+        # Test fleet_summary with same params as dashboard
         try:
-            fs = GT.fleet_summary()
-            parts.append(f"fleet_summary: active={fs['active_vehicles']} miles={fs['total_fleet_miles']} total_v={fs['total_vehicles']}")
+            start_dt = datetime.combine(date(2020,1,1), datetime.min.time()).replace(tzinfo=timezone.utc)
+            end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+            fs = GT.fleet_summary(start_dt, end_dt)
+            parts.append(f"fleet_summary(start={start_dt.date()}, end={end_dt.date()}): active={fs['active_vehicles']} miles={fs['total_fleet_miles']}")
         except Exception as e:
-            parts.append(f"fleet_summary ERROR: {e}")
+            parts.append(f"fleet_summary(start,end) ERROR: {e}")
         # Test vehicle_utilization
         try:
             vu = GT.vehicle_utilization()

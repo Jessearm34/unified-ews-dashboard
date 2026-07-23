@@ -179,10 +179,10 @@ def speed_analysis(since: datetime | None = None, until: datetime | None = None)
         "speeding_pct": round(int(r["spd"]) / cnt * 100, 2) if cnt else 0.0,
         "avg_speed": round(float(r["avg_s"]), 1) if cnt else 0.0,
         "max_speed": round(float(r["max_s"]), 1) if cnt else 0.0,
-        "speed_distribution": [r[0] for r in _exec(
+        "speed_distribution": [r["speed"] for r in _exec(
             "SELECT speed FROM gps_logs WHERE timestamp BETWEEN :s AND :u ORDER BY RANDOM() LIMIT 1000",
             {"s": since, "u": until}
-        ) if r],
+        ) if r.get("speed") is not None],
     }
 
 

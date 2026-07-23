@@ -1358,15 +1358,88 @@ async def gt_inspect_device(req):
             out.append(f"Plate: {d.get('licensePlate') or 'N/A'}")
             out.append(f"Make/Model: {d.get('make') or ''} {d.get('model') or ''} ({d.get('year') or ''})")
             out.append(f"All keys: {', '.join(sorted(d.keys()))}")
-            # Check for driver-related fields
             for key in sorted(d.keys()):
                 val = d[key]
                 if isinstance(val, dict) and any(k in str(val).lower() for k in ['driver', 'user', 'person']):
                     out.append(f"  -> {key}: {val}")
-            # Show any driver-like field
             for key in ['driver', 'licenseType', 'deviceType', 'property', 'properties', 'customProperties']:
                 if key in d:
                     out.append(f"  {key}: {d[key]}")
+        return Pre("\n".join(out))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
+
+
+@rt("/_gt_assign_drivers")
+async def gt_assign_drivers(req):
+    """Fetch ALL Devices from Geotab and write their 'name' as assigned_driver in vehicles."""
+    from sqlalchemy import create_engine, text
+    import requests, json, os
+    try:
+        gt_db = os.getenv("GEOTAB_DATABASE")
+        gt_user = os.getenv("GEOTAB_USERNAME")
+        gt_pass = os.getenv("GEOTAB_PASSWORD")
+        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
+        if not all([gt_db, gt_user, gt_pass]):
+            return Pre("ERROR: missing Geotab credentials")
+
+        gt_url = os.getenv("GT_DATABASE_URL", os.getenv("DATABASE_URL", ""))
+        if not gt_url:
+            return Pre("ERROR: GT_DATABASE_URL (or DATABASE_URL) not set")
+        if gt_url.startswith("postgres://"):
+            gt_url = gt_url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif gt_url.startswith("postgresql://") and "+psycopg2" not in gt_url:
+            gt_url = gt_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        eng = create_engine(gt_url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
+
+        with eng.begin() as conn:
+            conn.execute(text("""
+                DO $$ BEGIN
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS assigned_driver VARCHAR(255);
+                EXCEPTION WHEN duplicate_column THEN null;
+                END $$;
+            """))
+
+        base = f"https://{gt_server}/apiv1"
+        auth_resp = requests.post(base, json={
+            "method": "Authenticate",
+            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
+        }, timeout=30)
+        auth_data = auth_resp.json()
+        if "error" in auth_data:
+            return Pre(f"Auth error: {auth_data['error']}")
+        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
+
+        get_resp = requests.post(base, json={
+            "method": "Get",
+            "params": {"typeName": "Device", "credentials": creds, "resultsLimit": 50000}
+        }, timeout=120)
+        raw = get_resp.json()
+        devices = raw.get("result", [])
+        if not isinstance(devices, list):
+            return Pre(f"Unexpected: {json.dumps(raw)[:500]}")
+
+        out = [f"Fetched {len(devices)} devices from Geotab."]
+        updated = 0
+        skipped = 0
+        with eng.begin() as conn:
+            for d in devices:
+                gid = str(d.get("id", ""))
+                if not gid:
+                    skipped += 1; continue
+                device_name = d.get("name", "") or ""
+                vin = d.get("vehicleIdentificationNumber") or d.get("vin") or ""
+                plate = d.get("licensePlate") or ""
+                r = conn.execute(text(
+                    "UPDATE vehicles SET assigned_driver=:name, license_plate=COALESCE(NULLIF(:plate,''),license_plate) WHERE geotab_id=:gid"
+                ), {"name": device_name, "plate": plate, "gid": gid})
+                if r.rowcount > 0:
+                    updated += 1
+                    out.append(f"  ✓ {vin[:8]}... → {device_name}")
+                else:
+                    skipped += 1
+        out.append(f"\nUpdated {updated} vehicles. Skipped {skipped}.")
         return Pre("\n".join(out))
     except Exception as e:
         import traceback

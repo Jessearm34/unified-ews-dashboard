@@ -15,6 +15,7 @@ from hmac import compare_digest
 from urllib.parse import parse_qs, urlencode
 
 import pandas as pd
+import plotly.graph_objects as go
 from dotenv import load_dotenv
 from fasthtml.common import *
 

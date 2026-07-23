@@ -1446,6 +1446,75 @@ async def gt_assign_drivers(req):
         return Pre(f"Error: {e}\\n{traceback.format_exc()}")
 
 
+@rt("/_gt_migrate_trips")
+async def gt_migrate_trips(req):
+    """ALTER TABLE trips to add all new columns for enhanced Geotab fields."""
+    from sqlalchemy import create_engine, text
+    import os
+    try:
+        gt_url = os.getenv("GT_DATABASE_URL", os.getenv("DATABASE_URL", ""))
+        if not gt_url:
+            return Pre("ERROR: GT_DATABASE_URL (or DATABASE_URL) not set")
+        if gt_url.startswith("postgres://"):
+            gt_url = gt_url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif gt_url.startswith("postgresql://") and "+psycopg2" not in gt_url:
+            gt_url = gt_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        eng = create_engine(gt_url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
+
+        columns = [
+            ("average_speed", "FLOAT"),
+            ("maximum_speed", "FLOAT"),
+            ("driving_duration", "FLOAT DEFAULT 0"),
+            ("engine_hours", "FLOAT DEFAULT 0"),
+            ("is_seatbelt_off", "INTEGER"),
+            ("after_hours_distance", "FLOAT DEFAULT 0"),
+            ("work_distance", "FLOAT DEFAULT 0"),
+            ("stop_duration", "FLOAT DEFAULT 0"),
+            ("odometer_end", "FLOAT"),
+            ("speed_range_1_duration", "FLOAT DEFAULT 0"),
+            ("speed_range_2_duration", "FLOAT DEFAULT 0"),
+            ("speed_range_3_duration", "FLOAT DEFAULT 0"),
+        ]
+
+        out = []
+        with eng.begin() as conn:
+            for col_name, col_type in columns:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE trips ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
+                    ))
+                    out.append(f"  ✓ {col_name} ({col_type})")
+                except Exception as e:
+                    try:
+                        # Fallback for older PG
+                        conn.execute(text(f"ALTER TABLE trips ADD COLUMN {col_name} {col_type}"))
+                        out.append(f"  ✓ {col_name} ({col_type}) [fallback]")
+                    except Exception as e2:
+                        if "already exists" in str(e2).lower():
+                            out.append(f"  — {col_name} (already exists)")
+                        else:
+                            out.append(f"  ✗ {col_name}: {str(e2)[:100]}")
+
+        conn = eng.connect()
+        r = conn.execute(text("SELECT COUNT(*) FROM trips"))
+        trip_count = r.scalar()
+        r = conn.execute(text("SELECT COUNT(odometer_end) FROM trips WHERE odometer_end IS NOT NULL"))
+        odom_count = r.scalar()
+        conn.close()
+        eng.dispose()
+
+        return Pre(
+            "=== Trip Table Migration ==="
+            + "\n" + "\n".join(out)
+            + f"\n\nTotal trips in DB: {trip_count}"
+            + f"\nTrips with odometer: {odom_count}"
+            + "\n\nPhase 1 complete. New columns added to trips table."
+        )
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
+
+
 @rt("/_gt_inspect_entity")
 async def gt_inspect_entity(req):
     """Query any Geotab entity type to inspect its structure."""

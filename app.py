@@ -1688,7 +1688,7 @@ async def gt_enhanced_sync(req):
             max_speed = float(trip["maximumSpeed"]) if trip.get("maximumSpeed") else None
             drive_dur = parse_dur(trip.get("drivingDuration"))
             eng_hrs = float(trip.get("engineHours", 0) or 0)
-            seatbelt = bool(trip["isSeatBeltOff"]) if trip.get("isSeatBeltOff") is not None else None
+            seatbelt = 1 if trip.get("isSeatBeltOff") else (0 if trip.get("isSeatBeltOff") is not None else None)
             after_hrs = float(trip.get("afterHoursDistance", 0) or 0) * KM_TO_MILES
             work_dist = float(trip.get("workDistance", 0) or 0) * KM_TO_MILES
             stop_dur = parse_dur(trip.get("stopDuration"))

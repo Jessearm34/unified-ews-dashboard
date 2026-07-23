@@ -1373,6 +1373,61 @@ async def gt_inspect_device(req):
         return Pre(f"Error: {e}\\n{traceback.format_exc()}")
 
 
+@rt("/_gt_inspect_entity")
+async def gt_inspect_entity(req):
+    """Query any Geotab entity type to inspect its structure."""
+    import requests, json, datetime
+    try:
+        gt_db = os.getenv("GEOTAB_DATABASE")
+        gt_user = os.getenv("GEOTAB_USERNAME")
+        gt_pass = os.getenv("GEOTAB_PASSWORD")
+        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
+        if not all([gt_db, gt_user, gt_pass]):
+            return Pre("ERROR: missing Geotab credentials")
+
+        entity = req.query_params.get("entity", "").strip()
+        if not entity:
+            return Pre("Usage: /_gt_inspect_entity?entity=DriverChange&limit=3")
+
+        limit = int(req.query_params.get("limit", "3"))
+
+        base = f"https://{gt_server}/apiv1"
+        auth_resp = requests.post(base, json={
+            "method": "Authenticate",
+            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
+        }, timeout=30)
+        auth_data = auth_resp.json()
+        if "error" in auth_data:
+            return Pre(f"Auth error: {auth_data['error']}")
+        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
+
+        get_resp = requests.post(base, json={
+            "method": "Get",
+            "params": {"typeName": entity, "credentials": creds, "resultsLimit": limit}
+        }, timeout=60)
+        raw = get_resp.json()
+        items = raw.get("result", [])
+        if not isinstance(items, list):
+            return Pre(f"Response: {json.dumps(raw, indent=2)[:5000]}")
+
+        out = []
+        out.append(f"Total {entity} returned: {len(items)}")
+        for i, item in enumerate(items):
+            out.append(f"\n--- {entity} {i+1} ---")
+            out.append(f"ID: {item.get('id')}")
+            # Show all keys and their values (truncated)
+            for key in sorted(item.keys()):
+                val = item[key]
+                val_str = json.dumps(val) if not isinstance(val, str) else val
+                if len(val_str) > 200:
+                    val_str = val_str[:200] + "..."
+                out.append(f"  {key}: {val_str}")
+        return Pre("\n".join(out))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
+
+
 @rt("/_gt_resync_trips")
 async def gt_resync_trips(req):
     """Re-fetch all trips from Geotab to populate driver_id on existing records."""

@@ -1350,6 +1350,21 @@ async def gt_check_vehicles(req):
             tcount = conn.execute(text("SELECT COUNT(*) FROM trips")).scalar()
             trange = conn.execute(text("SELECT MIN(start_time) as min_ts, MAX(start_time) as max_ts FROM trips")).one()
         parts = [f"Trips: {tcount} total, from {trange.min_ts} to {trange.max_ts}"]
+        parts.append(f"Range all: {date(2020,1,1)} to {date.today()}")
+        # Test fleet_summary
+        try:
+            fs = GT.fleet_summary()
+            parts.append(f"fleet_summary: active={fs['active_vehicles']} miles={fs['total_fleet_miles']} total_v={fs['total_vehicles']}")
+        except Exception as e:
+            parts.append(f"fleet_summary ERROR: {e}")
+        # Test vehicle_utilization
+        try:
+            vu = GT.vehicle_utilization()
+            parts.append(f"vehicle_utilization: {len(vu)} vehicles returned")
+            for v in vu[:3]:
+                parts.append(f"  label={v['label']} miles={v['total_miles']}")
+        except Exception as e:
+            parts.append(f"vehicle_utilization ERROR: {e}")
         for r in vrows:
             parts.append(f"ID={r.id} geotab_id={r.geotab_id} vin={r.vin or 'N/A'} plate={r.license_plate or 'N/A'} driver={r.assigned_driver or 'NULL'}")
         return Div(*[Div(l) for l in parts], style="font-family:monospace;font-size:12px;padding:16px;")

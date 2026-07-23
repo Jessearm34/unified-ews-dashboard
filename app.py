@@ -1515,6 +1515,305 @@ async def gt_migrate_trips(req):
         return Pre(f"Error: {e}\\n{traceback.format_exc()}")
 
 
+@rt("/_gt_enhanced_sync")
+async def gt_enhanced_sync(req):
+    """Re-fetch ALL trips from Geotab with full fields + create exception_events table."""
+    from sqlalchemy import create_engine, text, types
+    import requests, json, os, datetime, time
+    try:
+        gt_db = os.getenv("GEOTAB_DATABASE")
+        gt_user = os.getenv("GEOTAB_USERNAME")
+        gt_pass = os.getenv("GEOTAB_PASSWORD")
+        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
+        gt_url = os.getenv("GT_DATABASE_URL", os.getenv("DATABASE_URL", ""))
+        if not all([gt_db, gt_user, gt_pass]):
+            return Pre("ERROR: missing Geotab credentials")
+        if not gt_url:
+            return Pre("ERROR: GT_DATABASE_URL not set")
+
+        if gt_url.startswith("postgres://"):
+            gt_url = gt_url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif gt_url.startswith("postgresql://") and "+psycopg2" not in gt_url:
+            gt_url = gt_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        eng = create_engine(gt_url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
+
+        out_lines = []
+        step_start = time.time()
+
+        # ── Step 1: Ensure all columns exist ──
+        new_cols = [
+            ("average_speed", "FLOAT"),
+            ("maximum_speed", "FLOAT"),
+            ("driving_duration", "FLOAT DEFAULT 0"),
+            ("engine_hours", "FLOAT DEFAULT 0"),
+            ("is_seatbelt_off", "INTEGER"),
+            ("after_hours_distance", "FLOAT DEFAULT 0"),
+            ("work_distance", "FLOAT DEFAULT 0"),
+            ("stop_duration", "FLOAT DEFAULT 0"),
+            ("odometer_end", "FLOAT"),
+            ("speed_range_1_duration", "FLOAT DEFAULT 0"),
+            ("speed_range_2_duration", "FLOAT DEFAULT 0"),
+            ("speed_range_3_duration", "FLOAT DEFAULT 0"),
+        ]
+        with eng.begin() as conn:
+            for name, typ in new_cols:
+                conn.execute(text(f"ALTER TABLE trips ADD COLUMN IF NOT EXISTS {name} {typ}"))
+        out_lines.append(f"Step 1: Columns ensured ({len(new_cols)} cols)")
+
+        # ── Step 2: Create exception_events table ──
+        with eng.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS exception_events (
+                    id SERIAL PRIMARY KEY,
+                    geotab_event_id VARCHAR(128) UNIQUE,
+                    vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+                    driver_id INTEGER REFERENCES drivers(id) ON DELETE SET NULL,
+                    event_type VARCHAR(64),
+                    event_description TEXT,
+                    timestamp TIMESTAMP WITH TIME ZONE,
+                    rule_name VARCHAR(255),
+                    latitude FLOAT,
+                    longitude FLOAT,
+                    speed FLOAT,
+                    zone_name VARCHAR(255),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_exception_events_ts ON exception_events(timestamp)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_exception_events_type ON exception_events(event_type)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_exception_events_vehicle ON exception_events(vehicle_id)"))
+        out_lines.append("Step 2: exception_events table ready")
+
+        # ── Step 3: Authenticate with Geotab API ──
+        base = f"https://{gt_server}/apiv1"
+        auth_resp = requests.post(base, json={
+            "method": "Authenticate",
+            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
+        }, timeout=30)
+        auth_data = auth_resp.json()
+        if "error" in auth_data:
+            return Pre(f"Auth error: {auth_data['error']}")
+        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
+        out_lines.append(f"Step 3: Authenticated")
+
+        # ── Step 4: Fetch all trips (90-day lookback, bisect) ──
+        KM_TO_MILES = 0.621371
+        LITERS_TO_GALLONS = 0.264172
+        now = datetime.datetime.now(datetime.timezone.utc)
+        since = now - datetime.timedelta(days=365)
+
+        def parse_dur(val):
+            if val is None or val == "" or val == 0:
+                return 0.0
+            if isinstance(val, (int, float)):
+                return float(val)
+            text = str(val).strip()
+            parts = text.split(":")
+            if len(parts) == 3:
+                try: return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                except: return 0.0
+            try: return float(text)
+            except: return 0.0
+
+        def parse_idling(val):
+            if val is None or val == "" or val == 0: return 0.0
+            if isinstance(val, (int, float)): return float(val)
+            text = str(val).strip()
+            parts = text.split(":")
+            if len(parts) == 3:
+                try: return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                except: return 0.0
+            try: return float(text)
+            except: return 0.0
+
+        def fetch_bisect(from_dt, to_dt, depth=0):
+            if depth > 10: return []
+            search = {"fromDate": from_dt.isoformat().replace("+00:00", "Z"),
+                       "toDate": to_dt.isoformat().replace("+00:00", "Z")}
+            r = requests.post(base, json={
+                "method": "Get", "params": {
+                    "typeName": "Trip", "credentials": creds,
+                    "search": search, "resultsLimit": 50000
+                }
+            }, timeout=120)
+            data = r.json()
+            items = data.get("result", [])
+            if isinstance(items, list) and len(items) < 50000:
+                return items
+            # Hit limit, bisect
+            mid = from_dt + (to_dt - from_dt) / 2
+            gap = int((to_dt - from_dt).total_seconds())
+            if gap < 3600:  # < 1 hour, accept partial
+                return items if isinstance(items, list) else []
+            first = fetch_bisect(from_dt, mid, depth+1)
+            second = fetch_bisect(mid, to_dt, depth+1)
+            return first + second
+
+        trips_raw = fetch_bisect(since, now)
+        out_lines.append(f"Step 4: Fetched {len(trips_raw)} trips from Geotab API")
+
+        # ── Step 5: Build vehicle map ──
+        with eng.connect() as conn:
+            rows = conn.execute(text("SELECT geotab_id, id FROM vehicles")).all()
+        vehicle_map = {r[0]: r[1] for r in rows}
+        driver_rows = conn.execute(text("SELECT geotab_id, id FROM drivers")).all()
+        driver_map = {r[0]: r[1] for r in rows}
+        out_lines.append(f"Step 5: Vehicle map ({len(vehicle_map)}) / Driver map ({len(driver_map)})")
+
+        # ── Step 6: Upsert trips ──
+        updated = 0
+        skipped = 0
+        batch = []
+        for trip in trips_raw:
+            trip_id = str(trip.get("id", ""))
+            if not trip_id: continue
+            device_raw = trip.get("device")
+            veh_gid = str(device_raw.get("id", "")) if isinstance(device_raw, dict) else ""
+            veh_id = vehicle_map.get(veh_gid)
+            if not veh_id:
+                skipped += 1
+                continue
+
+            driver_raw = trip.get("driver")
+            drv_gid = None
+            if isinstance(driver_raw, dict): drv_gid = str(driver_raw.get("id", ""))
+            elif driver_raw: drv_gid = str(driver_raw)
+            drv_id = driver_map.get(drv_gid) if drv_gid else None
+
+            distance = float(trip.get("distance", 0) or 0) * KM_TO_MILES
+            fuel = float(trip.get("fuelUsed", 0) or 0) * LITERS_TO_GALLONS
+            idle = parse_idling(trip.get("idlingDuration"))
+            avg_speed = float(trip["averageSpeed"]) if trip.get("averageSpeed") else None
+            max_speed = float(trip["maximumSpeed"]) if trip.get("maximumSpeed") else None
+            drive_dur = parse_dur(trip.get("drivingDuration"))
+            eng_hrs = float(trip.get("engineHours", 0) or 0)
+            seatbelt = bool(trip["isSeatBeltOff"]) if trip.get("isSeatBeltOff") is not None else None
+            after_hrs = float(trip.get("afterHoursDistance", 0) or 0) * KM_TO_MILES
+            work_dist = float(trip.get("workDistance", 0) or 0) * KM_TO_MILES
+            stop_dur = parse_dur(trip.get("stopDuration"))
+            odo = float(trip["odometer"]) if trip.get("odometer") else None
+            sr1 = parse_dur(trip.get("speedRange1Duration"))
+            sr2 = parse_dur(trip.get("speedRange2Duration"))
+            sr3 = parse_dur(trip.get("speedRange3Duration"))
+
+            start_str = trip.get("start", "")
+            end_str = trip.get("stop") or trip.get("end", "")
+            start_dt = start_str.replace("Z", "+00:00") if start_str else None
+            end_dt = end_str.replace("Z", "+00:00") if end_str else None
+
+            batch.append({
+                "gid": trip_id, "vid": veh_id, "did": drv_id,
+                "start": start_dt, "end": end_dt,
+                "dist": distance, "fuel": fuel, "idle": idle,
+                "avg_spd": avg_speed, "max_spd": max_speed,
+                "drive_dur": drive_dur, "eng_hrs": eng_hrs,
+                "belt": seatbelt, "after_hrs": after_hrs, "work": work_dist,
+                "stop": stop_dur, "odo": odo,
+                "sr1": sr1, "sr2": sr2, "sr3": sr3,
+            })
+
+        with eng.begin() as conn:
+            for b in batch:
+                r = conn.execute(text("""
+                    INSERT INTO trips (
+                        geotab_trip_id, vehicle_id, driver_id,
+                        start_time, end_time, distance_miles, fuel_used, idle_time,
+                        average_speed, maximum_speed, driving_duration, engine_hours,
+                        is_seatbelt_off, after_hours_distance, work_distance, stop_duration,
+                        odometer_end, speed_range_1_duration, speed_range_2_duration, speed_range_3_duration
+                    ) VALUES (
+                        :gid, :vid, :did,
+                        :start, :end, :dist, :fuel, :idle,
+                        :avg_spd, :max_spd, :drive_dur, :eng_hrs,
+                        :belt, :after_hrs, :work, :stop,
+                        :odo, :sr1, :sr2, :sr3
+                    )
+                    ON CONFLICT (geotab_trip_id) DO UPDATE SET
+                        vehicle_id=:vid, driver_id=:did,
+                        start_time=:start, end_time=:end,
+                        distance_miles=:dist, fuel_used=:fuel, idle_time=:idle,
+                        average_speed=:avg_spd, maximum_speed=:max_spd,
+                        driving_duration=:drive_dur, engine_hours=:eng_hrs,
+                        is_seatbelt_off=:belt, after_hours_distance=:after_hrs,
+                        work_distance=:work, stop_duration=:stop, odometer_end=:odo,
+                        speed_range_1_duration=:sr1, speed_range_2_duration=:sr2,
+                        speed_range_3_duration=:sr3
+                """), b)
+                updated += 1
+        out_lines.append(f"Step 6: Upserted {updated} trips (skipped {skipped})")
+
+        # ── Step 7: Fetch ExceptionEvents (last 30 days) ──
+        since_ee = now - datetime.timedelta(days=30)
+        r = requests.post(base, json={
+            "method": "Get", "params": {
+                "typeName": "ExceptionEvent", "credentials": creds,
+                "search": {"fromDate": since_ee.isoformat().replace("+00:00", "Z")},
+                "resultsLimit": 50000
+            }
+        }, timeout=120)
+        ee_data = r.json()
+        ee_items = ee_data.get("result", [])
+        if not isinstance(ee_items, list):
+            ee_items = []
+        out_lines.append(f"Step 7: Fetched {len(ee_items)} exception events")
+
+        ee_inserted = 0
+        with eng.begin() as conn:
+            for ee in ee_items:
+                ee_id = str(ee.get("id", ""))
+                if not ee_id: continue
+                # Extract vehicle
+                dev_raw = ee.get("device")
+                veh_gid = str(dev_raw.get("id", "")) if isinstance(dev_raw, dict) else ""
+                veh_id = vehicle_map.get(veh_gid)
+                # Extract driver
+                drv_raw = ee.get("driver")
+                drv_gid = None
+                if isinstance(drv_raw, dict): drv_gid = str(drv_raw.get("id", ""))
+                elif drv_raw: drv_gid = str(drv_raw)
+                drv_id = driver_map.get(drv_gid) if drv_gid else None
+                # Parse rule info
+                rule_raw = ee.get("rule", {})
+                rule_name = rule_raw.get("name", "") if isinstance(rule_raw, dict) else ""
+                # Event type
+                event_type = ee.get("eventType", "") or ee.get("exceptionType", "") or rule_name
+                event_desc = ee.get("description") or ee.get("notes", "") or ""
+                ts_raw = ee.get("dateTime") or ee.get("timestamp", "")
+                ts = ts_raw.replace("Z", "+00:00") if ts_raw else None
+                lat = float(ee["latitude"]) if ee.get("latitude") else None
+                lon = float(ee["longitude"]) if ee.get("longitude") else None
+                speed_val = float(ee["speed"]) if ee.get("speed") else None
+
+                try:
+                    conn.execute(text("""
+                        INSERT INTO exception_events
+                            (geotab_event_id, vehicle_id, driver_id, event_type, event_description,
+                             timestamp, rule_name, latitude, longitude, speed)
+                        VALUES (:eid, :vid, :did, :type, :desc, :ts, :rule, :lat, :lon, :spd)
+                        ON CONFLICT (geotab_event_id) DO UPDATE SET
+                            vehicle_id=:vid, driver_id=:did, event_type=:type,
+                            event_description=:desc, timestamp=:ts, rule_name=:rule,
+                            latitude=:lat, longitude=:lon, speed=:spd
+                    """), {"eid": ee_id, "vid": veh_id, "did": drv_id,
+                           "type": event_type, "desc": event_desc, "ts": ts,
+                           "rule": rule_name, "lat": lat, "lon": lon, "spd": speed_val})
+                    ee_inserted += 1
+                except Exception:
+                    pass
+
+        out_lines.append(f"     Inserted {ee_inserted} exception events")
+
+        elapsed = time.time() - step_start
+        out_lines.append(f"\n=== Enhanced Sync Complete in {elapsed:.0f}s ===")
+        out_lines.append(f"Trips processed: {updated} | Exception events: {ee_inserted}")
+        return Pre("\n".join(out_lines))
+
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
+
+
 @rt("/_gt_inspect_entity")
 async def gt_inspect_entity(req):
     """Query any Geotab entity type to inspect its structure."""

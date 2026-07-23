@@ -109,7 +109,7 @@ def vehicle_utilization(since: datetime | None = None, until: datetime | None = 
         "COALESCE(SUM(t.distance_miles),0) as miles, "
         "COALESCE(SUM(EXTRACT(EPOCH FROM (t.end_time - t.start_time))/3600),0) as hours "
         "FROM vehicles v LEFT JOIN trips t ON t.vehicle_id=v.id AND t.start_time BETWEEN :s AND :u "
-        "GROUP BY v.id ORDER BY miles DESC LIMIT 15",
+        "GROUP BY v.id, v.license_plate, v.vin, v.assigned_driver ORDER BY miles DESC LIMIT 15",
         {"s": since, "u": until}
     )
     period_hrs = max((datetime.now(timezone.utc) - since).total_seconds() / 3600, 1)
@@ -136,7 +136,7 @@ def idling_summary(since: datetime | None = None, until: datetime | None = None)
         "COALESCE(SUM(EXTRACT(EPOCH FROM (t.end_time - t.start_time))),0) as total_time "
         "FROM vehicles v JOIN trips t ON t.vehicle_id=v.id "
         "WHERE t.start_time BETWEEN :s AND :u "
-        "GROUP BY v.id ORDER BY idle DESC",
+        "GROUP BY v.id, v.license_plate, v.assigned_driver ORDER BY idle DESC",
         {"s": since, "u": until}
     )
     vehicles = []
@@ -298,7 +298,7 @@ def exception_analysis(since: datetime | None = None, until: datetime | None = N
         "SELECT COALESCE(v.assigned_driver,v.license_plate,v.vin,v.geotab_id) as vehicle, "
         "COUNT(ee.id) as count, COALESCE(v.assigned_driver,'') as driver "
         "FROM exception_events ee LEFT JOIN vehicles v ON v.id=ee.vehicle_id "
-        "WHERE ee.timestamp BETWEEN :s AND :u GROUP BY v.id ORDER BY count DESC LIMIT 15",
+        "WHERE ee.timestamp BETWEEN :s AND :u GROUP BY v.id, v.assigned_driver, v.license_plate, v.vin, v.geotab_id ORDER BY count DESC LIMIT 15",
         {"s": since, "u": until}
     )
     daily = _exec(
@@ -331,7 +331,7 @@ def vehicle_maintenance_status(since: datetime | None = None, until: datetime | 
         "COALESCE(SUM(t.distance_miles),0) as total_miles, "
         "COUNT(t.id) as trip_count "
         "FROM vehicles v LEFT JOIN trips t ON t.vehicle_id=v.id AND t.start_time BETWEEN :s AND :u "
-        "GROUP BY v.id ORDER BY v.license_plate",
+        "GROUP BY v.id, v.license_plate, v.vin, v.assigned_driver, v.make, v.model, v.year ORDER BY v.license_plate",
         {"s": since, "u": until}
     )
     result = []

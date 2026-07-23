@@ -1119,70 +1119,10 @@ def render_gt_section(section_key="fleet", range_key="all"):
             cls="kpis",
         )
 
-        # Mileage trend line chart
-        mt_html = _empty
-        if tr:
-            df = pd.DataFrame(tr)
-            if df["mileage"].sum() > 0:
-                df["d"] = pd.to_datetime(df["day"])
-                fig = go.Figure(go.Scatter(x=df["d"], y=df["mileage"],
-                    mode="lines+markers", line=dict(color=I, width=2.5, shape="spline"),
-                    marker=dict(size=5), fill="tozeroy", fillcolor=_rgba(I, 0.10),
-                    hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
-                mt_html = _fig_html(fig)
+        # DEBUG: show raw data
+        debug = Pre(f"vehicles={len(ut)} trips={len(tr)} active={s['active_vehicles']} miles={s['total_fleet_miles']}")
 
-        # Utilization bar chart
-        ul_html = _empty
-        if ut:
-            top = [u for u in ut if u["total_miles"] > 0]
-            if top:
-                labels = [u.get("assigned_driver","") or u["label"] for u in top]
-                fig = go.Figure(go.Bar(x=[u["total_miles"] for u in top], y=labels,
-                    orientation="h", marker=dict(color=I),
-                    hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
-                fig.update_layout(yaxis=dict(autorange="reversed"))
-                ul_html = _fig_html(fig)
-
-        # Speed histogram
-        sh_html = _empty
-        sd = sp.get("speed_distribution", [])
-        if sd:
-            fig = go.Figure(go.Histogram(x=sd, marker=dict(color="#ea580c"),
-                hovertemplate="%{x:.0f} mph<br>%{y} records<extra></extra>"))
-            sh_html = _fig_html(fig)
-
-        # Idle bar chart
-        ih_html = _empty
-        iv = il.get("vehicles", [])
-        if iv:
-            active = [v for v in iv if v["idle_pct"] > 0][:10]
-            if active:
-                labels = [v.get("assigned_driver","") or v["label"] for v in active]
-                fig = go.Figure(go.Bar(x=[v["idle_pct"] for v in active], y=labels,
-                    orientation="h", marker=dict(color="#ea580c"),
-                    hovertemplate="%{y}<br>%{x:.1f}%<extra></extra>"))
-                fig.update_layout(yaxis=dict(autorange="reversed"))
-                ih_html = _fig_html(fig)
-
-        # Vehicle detail table
-        vt_html = _empty
-        if ut:
-            def _vt():
-                h = ["Vehicle/Driver", "Miles", "Hours", "Util %"]
-                trs = ""
-                for u in ut:
-                    lbl = u.get("assigned_driver","") or u["label"]
-                    trs += f"<tr><td>{lbl}</td><td class='num'>{u['total_miles']:,.0f}</td>"
-                    trs += f"<td class='num'>{u['hours_driven']:.1f}</td>"
-                    trs += f"<td class='num'>{u['utilization_percentage']:.1f}%</td></tr>"
-                return f"<div class='tbl-wrap'><table class='data'><thead><tr>{''.join(f'<th>{c}</th>' for c in h)}</tr></thead><tbody>{trs}</tbody></table></div>"
-            vt_html = _vt()
-
-        return ctrl, kpi_row, Div(
-            Div(panel("Daily Mileage", mt_html, dot=I), panel("Vehicle Utilization", ul_html, dot=I), cls="grid two"),
-            Div(panel("Speed Distribution", sh_html, dot="#ea580c"), panel("Idle Time", ih_html, dot="#ea580c"), cls="grid two mt"),
-            Div(panel("Vehicle Details", NotStr(vt_html), scroll=True), cls="grid mt"),
-        )
+        return ctrl, kpi_row, debug
 
     # ── Safety ──
     if section_key == "safety":

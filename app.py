@@ -1316,7 +1316,62 @@ async def gt_inspect_trip(req):
         return Pre("\n".join(out))
     except Exception as e:
         import traceback
-        return Pre(f"Error: {e}\n{traceback.format_exc()}")
+        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
+
+
+@rt("/_gt_inspect_device")
+async def gt_inspect_device(req):
+    """Show 3 sample Device records from Geotab to check driver-related fields."""
+    import requests, json
+    try:
+        gt_db = os.getenv("GEOTAB_DATABASE")
+        gt_user = os.getenv("GEOTAB_USERNAME")
+        gt_pass = os.getenv("GEOTAB_PASSWORD")
+        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
+        if not all([gt_db, gt_user, gt_pass]):
+            return Pre("ERROR: missing Geotab credentials")
+
+        base = f"https://{gt_server}/apiv1"
+        auth_resp = requests.post(base, json={
+            "method": "Authenticate",
+            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
+        }, timeout=30)
+        auth_data = auth_resp.json()
+        if "error" in auth_data:
+            return Pre(f"Auth error: {auth_data['error']}")
+        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
+
+        # Fetch 3 Device records
+        get_resp = requests.post(base, json={
+            "method": "Get",
+            "params": {"typeName": "Device", "credentials": creds, "resultsLimit": 3}
+        }, timeout=60)
+        raw = get_resp.json()
+        devices = raw.get("result", [])
+
+        out = []
+        out.append(f"Total devices returned: {len(devices)}")
+        for i, d in enumerate(devices):
+            out.append(f"\n--- Device {i+1} ---")
+            out.append(f"ID: {d.get('id')}")
+            out.append(f"VIN: {d.get('vehicleIdentificationNumber') or d.get('vin') or 'N/A'}")
+            out.append(f"Plate: {d.get('licensePlate') or 'N/A'}")
+            out.append(f"Make/Model: {d.get('make') or ''} {d.get('model') or ''} ({d.get('year') or ''})")
+            out.append(f"All keys: {', '.join(sorted(d.keys()))}")
+            # Check for driver-related fields
+            for key in sorted(d.keys()):
+                val = d[key]
+                if isinstance(val, dict) and any(k in str(val).lower() for k in ['driver', 'user', 'person']):
+                    out.append(f"  -> {key}: {val}")
+            # Show any driver-like field
+            for key in ['driver', 'licenseType', 'deviceType', 'property', 'properties', 'customProperties']:
+                if key in d:
+                    out.append(f"  {key}: {d[key]}")
+        return Pre("\n".join(out))
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
+
 
 @rt("/_gt_resync_trips")
 async def gt_resync_trips(req):

@@ -1428,6 +1428,83 @@ async def gt_inspect_entity(req):
         return Pre(f"Error: {e}\\n{traceback.format_exc()}")
 
 
+@rt("/_gt_sync_device_names")
+async def gt_sync_device_names(req):
+    """Fetch all Devices from Geotab and update assigned_driver on vehicles table."""
+    from sqlalchemy import create_engine, text
+    import requests, json, os
+    try:
+        gt_db = os.getenv("GEOTAB_DATABASE")
+        gt_user = os.getenv("GEOTAB_USERNAME")
+        gt_pass = os.getenv("GEOTAB_PASSWORD")
+        gt_server = os.getenv("GEOTAB_SERVER", "my.geotab.com")
+        if not all([gt_db, gt_user, gt_pass]):
+            return Pre("ERROR: missing Geotab credentials")
+
+        # Connect to GT database
+        gt_db_url = os.getenv("GT_DATABASE_URL")
+        if not gt_db_url:
+            return Pre("ERROR: GT_DATABASE_URL not set")
+        if gt_db_url.startswith("postgres://"):
+            gt_db_url = gt_db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+        if "sslmode" not in gt_db_url:
+            gt_db_url += "&sslmode=require" if "?" in gt_db_url else "?sslmode=require"
+        eng = create_engine(gt_db_url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
+
+        # Ensure assigned_driver column exists
+        with eng.begin() as conn:
+            conn.execute(text("""
+                DO $$ BEGIN
+                    ALTER TABLE vehicles ADD COLUMN assigned_driver VARCHAR(255);
+                EXCEPTION WHEN duplicate_column THEN null;
+                END $$;
+            """))
+
+        # Authenticate with Geotab API
+        base = f"https://{gt_server}/apiv1"
+        auth_resp = requests.post(base, json={
+            "method": "Authenticate",
+            "params": {"database": gt_db, "userName": gt_user, "password": gt_pass}
+        }, timeout=30)
+        auth_data = auth_resp.json()
+        if "error" in auth_data:
+            return Pre(f"Auth error: {auth_data['error']}")
+        creds = auth_data.get("result", {}).get("credentials", auth_data.get("result", {}))
+
+        # Fetch ALL Devices
+        get_resp = requests.post(base, json={
+            "method": "Get",
+            "params": {"typeName": "Device", "credentials": creds, "resultsLimit": 50000}
+        }, timeout=120)
+        raw = get_resp.json()
+        devices = raw.get("result", [])
+        if not isinstance(devices, list):
+            return Pre(f"Unexpected response: {json.dumps(raw)[:500]}")
+
+        updated = 0
+        skipped = 0
+        with eng.begin() as conn:
+            for d in devices:
+                gid = str(d.get("id", ""))
+                if not gid:
+                    skipped += 1
+                    continue
+                device_name = d.get("name", "") or ""
+                plate = d.get("licensePlate") or ""
+                result = conn.execute(text(
+                    "UPDATE vehicles SET assigned_driver = :name, license_plate = COALESCE(NULLIF(:plate, ''), license_plate) WHERE geotab_id = :gid"
+                ), {"name": device_name, "plate": plate, "gid": gid})
+                if result.rowcount > 0:
+                    updated += 1
+                else:
+                    skipped += 1
+
+        return Pre(f"Processed {len(devices)} devices from Geotab.\nUpdated {updated} vehicles in DB.\nSkipped {skipped} (no matching vehicle).\n\nVIN-to-Driver mapping saved to vehicles.assigned_driver.")
+    except Exception as e:
+        import traceback
+        return Pre(f"Error: {e}\\n{traceback.format_exc()}")
+
+
 @rt("/_gt_resync_trips")
 async def gt_resync_trips(req):
     """Re-fetch all trips from Geotab to populate driver_id on existing records."""

@@ -1077,8 +1077,9 @@ def render_sd_section(section_key):
 
 # ── GeoTab Section Renderer ──────────────────────────────────────────
 
-def _fig_html(fig):
+def _fig_html(fig, height=300):
     fig.update_layout(
+        height=height,
         margin=dict(l=10, r=10, t=5, b=10),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Inter, system-ui, sans-serif", size=11),

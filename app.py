@@ -1342,6 +1342,24 @@ async def health(req):
     return "OK"
 
 
+@rt("/_gt_check_vehicles")
+async def gt_check_vehicles(req):
+    """Show vehicles table from GT database."""
+    from sqlalchemy import text
+    eng = GT.gt_engine()
+    if eng is None:
+        return Pre("GT database not configured")
+    try:
+        with eng.connect() as conn:
+            rows = conn.execute(text("SELECT id, geotab_id, vin, license_plate, assigned_driver FROM vehicles ORDER BY id")).all()
+        out = []
+        for r in rows:
+            out.append(f"ID={r.id} geotab_id={r.geotab_id} vin={r.vin or 'N/A'} plate={r.license_plate or 'N/A'} driver={r.assigned_driver or 'NULL'}")
+        return Pre("\n".join(out))
+    except Exception as e:
+        return Pre(f"Error: {e}")
+
+
 @rt("/_dbcheck")
 async def db_check(req):
     """Diagnostic - checks both DB connections and lists tables."""

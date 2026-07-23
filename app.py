@@ -1119,10 +1119,65 @@ def render_gt_section(section_key="fleet", range_key="all"):
             cls="kpis",
         )
 
-        # DEBUG: show raw data
-        debug = Pre(f"vehicles={len(ut)} trips={len(tr)} active={s['active_vehicles']} miles={s['total_fleet_miles']}")
+        # Mileage trend
+        mt = _empty
+        if tr and sum(r.get("mileage",0) for r in tr) > 0:
+            df = pd.DataFrame(tr)
+            df["d"] = pd.to_datetime(df["day"])
+            f = go.Figure(go.Scatter(x=df["d"], y=df["mileage"], mode="lines+markers",
+                line=dict(color=I, width=2.5, shape="spline"), marker=dict(size=5),
+                fill="tozeroy", fillcolor=_rgba(I,0.10),
+                hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
+            mt = _fig_html(f)
 
-        return ctrl, kpi_row, debug
+        # Utilization
+        uu = _empty
+        top = [u for u in ut if u["total_miles"] > 0]
+        if top:
+            labs = [u.get("assigned_driver","") or u["label"] for u in top]
+            f = go.Figure(go.Bar(x=[u["total_miles"] for u in top], y=labs,
+                orientation="h", marker=dict(color=I),
+                hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
+            f.update_layout(yaxis=dict(autorange="reversed"))
+            uu = _fig_html(f)
+
+        # Speed histogram
+        sh = _empty
+        sd = sp.get("speed_distribution", [])
+        if sd:
+            f = go.Figure(go.Histogram(x=sd, marker=dict(color="#ea580c"),
+                hovertemplate="%{x:.0f} mph<br>%{y} records<extra></extra>"))
+            sh = _fig_html(f)
+
+        # Idle
+        ih = _empty
+        iv = il.get("vehicles", [])
+        av = [v for v in iv if v["idle_pct"] > 0][:10] if iv else []
+        if av:
+            labs = [v.get("assigned_driver","") or v["label"] for v in av]
+            f = go.Figure(go.Bar(x=[v["idle_pct"] for v in av], y=labs,
+                orientation="h", marker=dict(color="#ea580c"),
+                hovertemplate="%{y}<br>%{x:.1f}%<extra></extra>"))
+            f.update_layout(yaxis=dict(autorange="reversed"))
+            ih = _fig_html(f)
+
+        # Vehicle table
+        vt = _empty
+        if ut:
+            hh = ["Vehicle/Driver", "Miles", "Hours", "Util %"]
+            rr = ""
+            for u in ut:
+                lb = u.get("assigned_driver","") or u["label"]
+                rr += f"<tr><td>{lb}</td><td class='num'>{u['total_miles']:,.0f}</td>"
+                rr += f"<td class='num'>{u['hours_driven']:.1f}</td>"
+                rr += f"<td class='num'>{u['utilization_percentage']:.1f}%</td></tr>"
+            vt = f"<div class='tbl-wrap'><table class='data'><thead><tr>{''.join(f'<th>{c}</th>' for c in hh)}</tr></thead><tbody>{rr}</tbody></table></div>"
+
+        return ctrl, kpi_row, Div(
+            Div(panel("Daily Mileage", mt, dot=I), panel("Vehicle Utilization", uu, dot=I), cls="grid two"),
+            Div(panel("Speed Distribution", sh, dot="#ea580c"), panel("Idle Time", ih, dot="#ea580c"), cls="grid two mt"),
+            Div(panel("Vehicle Details", NotStr(vt), scroll=True), cls="grid mt"),
+        )
 
     # ── Safety ──
     if section_key == "safety":
@@ -1288,18 +1343,18 @@ async def gt_check_vehicles(req):
     from sqlalchemy import text
     eng = GT.gt_engine()
     if eng is None:
-        return Pre("GT database not configured")
+        return Div("GT database not configured", cls="chart-empty")
     try:
         with eng.connect() as conn:
             vrows = conn.execute(text("SELECT id, geotab_id, vin, license_plate, assigned_driver FROM vehicles ORDER BY id")).all()
             tcount = conn.execute(text("SELECT COUNT(*) FROM trips")).scalar()
-            trange = conn.execute(text("SELECT MIN(start_time), MAX(start_time) FROM trips")).one()
-        out = [f"Trips: {tcount} total, from {trange.min} to {trange.max}\n"]
+            trange = conn.execute(text("SELECT MIN(start_time) as min_ts, MAX(start_time) as max_ts FROM trips")).one()
+        parts = [f"Trips: {tcount} total, from {trange.min_ts} to {trange.max_ts}"]
         for r in vrows:
-            out.append(f"ID={r.id} geotab_id={r.geotab_id} vin={r.vin or 'N/A'} plate={r.license_plate or 'N/A'} driver={r.assigned_driver or 'NULL'}")
-        return Pre("\n".join(out))
+            parts.append(f"ID={r.id} geotab_id={r.geotab_id} vin={r.vin or 'N/A'} plate={r.license_plate or 'N/A'} driver={r.assigned_driver or 'NULL'}")
+        return Div(*[Div(l) for l in parts], style="font-family:monospace;font-size:12px;padding:16px;")
     except Exception as e:
-        return Pre(f"Error: {e}")
+        return Div(f"Error: {e}", cls="chart-empty")
 
 
 @rt("/_dbcheck")

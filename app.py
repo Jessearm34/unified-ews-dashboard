@@ -1182,11 +1182,13 @@ def render_gt_section(section_key="fleet", range_key="all"):
 
         panels = []
 
-        # Seatbelt — temporal (on/off over time)
+        # Seatbelt — temporal (on/off over time). Only show if BOTH have data.
         sb_html = _empty
         if sb:
             df = pd.DataFrame(sb)
-            if df["seatbelt_off"].sum() > 0 or df["seatbelt_on"].sum() > 0:
+            sb_off = df["seatbelt_off"].sum()
+            sb_on = df["seatbelt_on"].sum()
+            if sb_off > 0 and sb_on > 0:
                 df["d"] = pd.to_datetime(df["day"])
                 fig = go.Figure()
                 fig.add_trace(go.Bar(x=df["d"], y=df["seatbelt_off"], name="No Belt",
@@ -1196,11 +1198,13 @@ def render_gt_section(section_key="fleet", range_key="all"):
                 fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
                 sb_html = _fig_html(fig)
 
-        # After-hours — temporal (work vs after-hours over time)
+        # After-hours — temporal (work vs after-hours). Only show if BOTH have data.
         ah_html = _empty
         if ah:
             df = pd.DataFrame(ah)
-            if df["after_hours_miles"].sum() > 0 or df["work_miles"].sum() > 0:
+            ah_mi = df["after_hours_miles"].sum()
+            wk_mi = df["work_miles"].sum()
+            if ah_mi > 0 and wk_mi > 0:
                 df["d"] = pd.to_datetime(df["day"])
                 fig = go.Figure()
                 fig.add_trace(go.Bar(x=df["d"], y=df["work_miles"], name="Work",

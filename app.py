@@ -1324,12 +1324,26 @@ async def gt_debug(request, section: str = "fleet"):
     """Auth-free GT section preview."""
     try:
         from fasthtml.common import HTMLResponse
+        from datetime import datetime, timezone, timedelta, date
+        from data import gt_data as GT
+        start, end = resolve_date_range("all")
+        since = datetime.combine(start, datetime.min.time()).replace(tzinfo=timezone.utc)
+        until = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)
+        tr = GT.daily_trends(since, until)
+        ut = GT.vehicle_utilization(since, until)
+        il = GT.idling_summary(since, until)
+        debug = f"<pre>range: {since.date()} to {until.date()} ({end})"
+        debug += f"\ndaily_trends: {len(tr)} rows"
+        if tr: debug += f", first mileage={tr[0].get('mileage',0)}, last={tr[-1].get('mileage',0)}"
+        debug += f"\nvehicle_utilization: {len(ut)} vehicles"
+        if ut: debug += f", first label='{ut[0].get('label','?')}' miles={ut[0].get('total_miles',0)}"
+        debug += f"\nidling_summary: {len(il.get('vehicles',[]))} vehicles"
         result = render_gt_section(section, "all")
         if isinstance(result, tuple) and len(result) >= 2:
             html = "".join(str(item) for item in result[1:])
         else:
             html = str(result)
-        return HTMLResponse(html)
+        return HTMLResponse(debug + "</pre>" + html)
     except Exception as e:
         import traceback
         return f"<pre>Error: {e}\n{traceback.format_exc()}</pre>", 500

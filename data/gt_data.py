@@ -196,7 +196,7 @@ def driver_metrics(since: datetime | None = None, until: datetime | None = None)
         "COALESCE(SUM(t.distance_miles),0) as distance_driven, "
         "COALESCE(AVG(t.distance_miles),0) as average_trip_length "
         "FROM drivers d LEFT JOIN trips t ON t.driver_id=d.id AND t.start_time BETWEEN :s AND :u "
-        "GROUP BY d.id ORDER BY distance_driven DESC",
+        "GROUP BY d.id, d.name ORDER BY distance_driven DESC",
         {"s": since, "u": until}
     )
 
@@ -366,7 +366,7 @@ def safety_driver_rankings(since: datetime | None = None, until: datetime | None
         "COALESCE(SUM(CASE WHEN t.maximum_speed>70 THEN 1 ELSE 0 END),0) as speeding_trips, "
         "COALESCE(SUM(EXTRACT(EPOCH FROM (t.end_time-t.start_time))),0) as total_time "
         "FROM drivers d JOIN trips t ON t.driver_id=d.id "
-        "WHERE t.start_time BETWEEN :s AND :u GROUP BY d.id ORDER BY miles DESC",
+        "WHERE t.start_time BETWEEN :s AND :u GROUP BY d.id, d.name ORDER BY miles DESC",
         {"s": since, "u": until}
     )
     result = []

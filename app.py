@@ -286,7 +286,6 @@ PLATFORMS = [
         "sections": [
             ("fleet", "Fleet Overview", "📊"),
             ("safety", "Safety", "🛡️"),
-            ("exceptions", "Exceptions", "⚠️"),
             ("maintenance", "Maintenance", "🔧"),
         ],
     },
@@ -1181,7 +1180,9 @@ def render_gt_section(section_key="fleet", range_key="all"):
         ah = GT.after_hours_analysis(since, until)
         sd = GT.safety_driver_rankings(since, until)
 
-        # Seatbelt stacked bar
+        panels = []
+
+        # Seatbelt — temporal (on/off over time)
         sb_html = _empty
         if sb:
             df = pd.DataFrame(sb)
@@ -1195,7 +1196,7 @@ def render_gt_section(section_key="fleet", range_key="all"):
                 fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
                 sb_html = _fig_html(fig)
 
-        # After-hours stacked bar
+        # After-hours — temporal (work vs after-hours over time)
         ah_html = _empty
         if ah:
             df = pd.DataFrame(ah)
@@ -1209,7 +1210,7 @@ def render_gt_section(section_key="fleet", range_key="all"):
                 fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
                 ah_html = _fig_html(fig)
 
-        # Safety score chart
+        # Driver safety score — comparative (if drivers data available)
         sc_html = _empty
         sd_table_html = _empty
         if sd:
@@ -1233,10 +1234,23 @@ def render_gt_section(section_key="fleet", range_key="all"):
                 trs += f"<td><span class='badge {bg}'>{d['score']}</span></td></tr>"
             sd_table_html = f"<div class='tbl-wrap' style='max-height:400px'><table class='data'><thead><tr><th>Driver</th><th class='num'>Trips</th><th class='num'>Seatbelt</th><th class='num'>After-Hrs</th><th class='num'>Idle</th><th class='num'>Speeding</th><th class='num'>Score</th></tr></thead><tbody>{trs}</tbody></table></div>"
 
-        return ctrl, Div(
-            Div(panel("Seatbelt Violations", sb_html, dot="#dc2626"), panel("Work vs After-Hours", ah_html, dot="#ea580c"), cls="grid two"),
-            Div(panel("Driver Safety Score", sc_html, dot="#16a34a"), panel("Safety Details", NotStr(sd_table_html), scroll=True), cls="grid two mt"),
-        )
+        # Assemble — only show panels with data
+        if sb_html != _empty or ah_html != _empty:
+            panels.append(Div(
+                panel("Seatbelt Violations", sb_html, dot="#dc2626") if sb_html != _empty else "",
+                panel("Work vs After-Hours", ah_html, dot="#ea580c") if ah_html != _empty else "",
+                cls="grid two"))
+        if sc_html != _empty:
+            panels.append(Div(
+                panel("Driver Safety Score", sc_html, dot="#16a34a"),
+                cls="grid two mt" if not panels else "grid two"))
+        if sd_table_html != _empty:
+            panels.append(Div(panel("Safety Details", NotStr(sd_table_html), scroll=True), cls="grid mt"))
+
+        if not panels:
+            return ctrl, Div(H2("Safety"), Div("No safety data available for this period.", cls="chart-empty"))
+
+        return ctrl, Div(*panels)
 
     # ── Exceptions ──
     if section_key == "exceptions":

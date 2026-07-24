@@ -1114,12 +1114,10 @@ def render_gt_section(section_key="fleet", range_key="all"):
         kpi_row = Div(
             _kpi("Active Vehicles", s["active_vehicles"], f"of {s['total_vehicles']}"),
             _kpi("Fleet Miles", s["total_fleet_miles"]),
-            _kpi("Avg Speed", round(sp.get("avg_speed",0),1), f"Max {round(sp.get('max_speed',0),1)} mph"),
-            _kpi("Speeding", sp.get("speeding_count",0)),
             cls="kpis",
         )
 
-        # Mileage trend
+        # 1. Daily Mileage Trend — temporal
         mt = _empty
         if tr and sum(r.get("mileage",0) for r in tr) > 0:
             df = pd.DataFrame(tr)
@@ -1130,36 +1128,42 @@ def render_gt_section(section_key="fleet", range_key="all"):
                 hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
             mt = _fig_html(f)
 
-        # Utilization
+        # 2. Vehicle Utilization — comparative (miles per driver)
         uu = _empty
         top = [u for u in ut if u["total_miles"] > 0]
-        if top:
+        if len(top) >= 2:
             labs = [u.get("assigned_driver","") or u["label"] for u in top]
             f = go.Figure(go.Bar(x=[u["total_miles"] for u in top], y=labs,
-                orientation="h", marker=dict(color=I),
+                orientation="h", marker=dict(color=[_rgba(I, 1 - (i/len(top))*0.6) for i in range(len(top))]),
                 hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
             f.update_layout(yaxis=dict(autorange="reversed"))
             uu = _fig_html(f)
 
-        # Speed histogram
-        sh = _empty
-        sd = sp.get("speed_distribution", [])
-        if sd:
-            f = go.Figure(go.Histogram(x=sd, marker=dict(color="#ea580c"),
-                hovertemplate="%{x:.0f} mph<br>%{y} records<extra></extra>"))
-            sh = _fig_html(f)
+        # 3. Trips per Driver — comparative
+        spd = _empty
+        dr_spd = GT.driver_metrics(since, until)
+        if dr_spd:
+            active = [d for d in dr_spd if d["trip_count"] > 0]
+            if len(active) >= 2:
+                names = [d["name"] for d in active]
+                trips = [d["trip_count"] for d in active]
+                f = go.Figure(go.Bar(x=trips, y=names,
+                    orientation="h", marker=dict(color="#ea580c"),
+                    hovertemplate="%{y}<br>%{x} trips<extra></extra>"))
+                f.update_layout(yaxis=dict(autorange="reversed"))
+                spd = _fig_html(f, 250)
 
-        # Idle
+        # 4. Idle Time — comparative (only if 2+ vehicles have real data)
         ih = _empty
         iv = il.get("vehicles", [])
-        av = [v for v in iv if v["idle_pct"] > 0][:10] if iv else []
-        if av:
+        av = [v for v in iv if v["idle_pct"] > 1] if iv else []
+        if len(av) >= 2:
             labs = [v.get("assigned_driver","") or v["label"] for v in av]
             f = go.Figure(go.Bar(x=[v["idle_pct"] for v in av], y=labs,
                 orientation="h", marker=dict(color="#ea580c"),
                 hovertemplate="%{y}<br>%{x:.1f}%<extra></extra>"))
             f.update_layout(yaxis=dict(autorange="reversed"))
-            ih = _fig_html(f)
+            ih = _fig_html(f, 250)
 
         # Vehicle table
         vt = _empty
@@ -1173,11 +1177,19 @@ def render_gt_section(section_key="fleet", range_key="all"):
                 rr += f"<td class='num'>{u['utilization_percentage']:.1f}%</td></tr>"
             vt = f"<div class='tbl-wrap'><table class='data'><thead><tr>{''.join(f'<th>{c}</th>' for c in hh)}</tr></thead><tbody>{rr}</tbody></table></div>"
 
-        return ctrl, kpi_row, Div(
-            Div(panel("Daily Mileage", mt, dot=I), panel("Vehicle Utilization", uu, dot=I), cls="grid two"),
-            Div(panel("Speed Distribution", sh, dot="#ea580c"), panel("Idle Time", ih, dot="#ea580c"), cls="grid two mt"),
-            Div(panel("Vehicle Details", NotStr(vt), scroll=True), cls="grid mt"),
-        )
+        # Assemble — only show panels that have real data
+        panels = [Div(panel("Daily Mileage", mt, dot=I), panel("Vehicle Utilization", uu, dot=I), cls="grid two")]
+        second_row = []
+        if spd != _empty:
+            second_row.append(panel("Trips per Driver", spd, dot="#ea580c"))
+        if ih != _empty:
+            second_row.append(panel("Idle Time", ih, dot="#ea580c"))
+        if second_row:
+            panels.append(Div(*second_row, cls="grid two mt" if len(second_row) == 2 else "grid mt"))
+        if vt != _empty:
+            panels.append(Div(panel("Vehicle Details", NotStr(vt), scroll=True), cls="grid mt"))
+
+        return ctrl, kpi_row, *panels
 
     # ── Safety ──
     if section_key == "safety":

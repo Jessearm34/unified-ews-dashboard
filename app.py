@@ -1076,13 +1076,14 @@ def render_sd_section(section_key):
 
 # ── GeoTab Section Renderer ──────────────────────────────────────────
 
-def _fig_html(fig, height=300):
+def _fig_html(fig, height=350):
     fig.update_layout(
         height=height,
         margin=dict(l=10, r=10, t=5, b=10),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, system-ui, sans-serif", size=11),
-        yaxis=dict(gridcolor="#e2e8f0"), xaxis=dict(gridcolor="#f1f5f9"),
+        font=dict(family="'Inter', system-ui, -apple-system, sans-serif", size=11),
+        yaxis=dict(gridcolor="#e2e8f0", zeroline=False, tickfont=dict(size=10)),
+        xaxis=dict(gridcolor="#f1f5f9", zeroline=False, tickfont=dict(size=10)),
     )
     return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
 
@@ -1108,7 +1109,6 @@ def render_gt_section(section_key="fleet", range_key="all"):
         tr = GT.daily_trends(since, until)
         ut = GT.vehicle_utilization(since, until)
         il = GT.idling_summary(since, until)
-        sp = GT.speed_analysis(since, until)
 
         kpi_row = Div(
             _kpi("Active Vehicles", s["active_vehicles"], f"of {s['total_vehicles']}"),
@@ -1116,38 +1116,53 @@ def render_gt_section(section_key="fleet", range_key="all"):
             cls="kpis",
         )
 
-        # 1. Daily Mileage Trend — temporal
+        # 1. Daily Mileage Trend — temporal line
         mt = _empty
         if tr and sum(r.get("mileage",0) for r in tr) > 0:
-            df = pd.DataFrame(tr)
+            df = pd.DataFrame(tr).sort_values("day")
             df["d"] = pd.to_datetime(df["day"])
-            f = go.Figure(go.Scatter(x=df["d"], y=df["mileage"], mode="lines+markers",
-                line=dict(color=I, width=2.5, shape="spline"), marker=dict(size=5),
-                fill="tozeroy", fillcolor=_rgba(I,0.10),
-                hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
+            f = go.Figure()
+            f.add_trace(go.Scatter(x=df["d"], y=df["mileage"].rolling(7, min_periods=1).mean(),
+                mode="lines", line=dict(color=I, width=2.5, shape="spline"),
+                name="7-day avg", hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
+            f.add_trace(go.Bar(x=df["d"], y=df["mileage"], marker=dict(color=_rgba(I,0.25)),
+                name="Daily", hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
+            f.update_layout(showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
             mt = _fig_html(f)
 
-        # 2. Vehicle Utilization — comparative (miles per driver)
+        # 2. Vehicle Utilization — comparative bar
         uu = _empty
         top = [u for u in ut if u["total_miles"] > 0]
         if len(top) >= 2:
+            colors = [_rgba(I, max(0.3, 1 - (i/len(top))*0.7)) for i in range(len(top))]
             labs = [u.get("assigned_driver","") or u["label"] for u in top]
             f = go.Figure(go.Bar(x=[u["total_miles"] for u in top], y=labs,
-                orientation="h", marker=dict(color=[_rgba(I, 1 - (i/len(top))*0.6) for i in range(len(top))]),
+                orientation="h", marker=dict(color=colors),
                 hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
-            f.update_layout(yaxis=dict(autorange="reversed"))
-            uu = _fig_html(f)
+            f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Miles Driven"))
+            uu = _fig_html(f, 350)
 
-        # 3. Idle Time — comparative (only if 2+ vehicles have real data)
+        # 3. Trip Count per Day — temporal bar (always has data with daily_trends)
+        tc = _empty
+        if tr and sum(r.get("trip_count",0) for r in tr) > 0:
+            df = pd.DataFrame(tr).sort_values("day")
+            df["d"] = pd.to_datetime(df["day"])
+            f = go.Figure(go.Bar(x=df["d"], y=df["trip_count"],
+                marker=dict(color="#ea580c", opacity=0.7),
+                hovertemplate="%{x|%b %d}<br>%{y} trips<extra></extra>"))
+            tc = _fig_html(f, 200)
+
+        # 4. Idle Time — optional (only if 2+ vehicles have real data)
         ih = _empty
         iv = il.get("vehicles", [])
         av = [v for v in iv if v["idle_pct"] > 1] if iv else []
         if len(av) >= 2:
+            colors = [_rgba("#ea580c", max(0.3, 1 - (i/len(av))*0.6)) for i in range(len(av))]
             labs = [v.get("assigned_driver","") or v["label"] for v in av]
             f = go.Figure(go.Bar(x=[v["idle_pct"] for v in av], y=labs,
-                orientation="h", marker=dict(color="#ea580c"),
+                orientation="h", marker=dict(color=colors),
                 hovertemplate="%{y}<br>%{x:.1f}%<extra></extra>"))
-            f.update_layout(yaxis=dict(autorange="reversed"))
+            f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Idle %"))
             ih = _fig_html(f, 250)
 
         # Vehicle table
@@ -1162,17 +1177,16 @@ def render_gt_section(section_key="fleet", range_key="all"):
                 rr += f"<td class='num'>{u['utilization_percentage']:.1f}%</td></tr>"
             vt = f"<div class='tbl-wrap'><table class='data'><thead><tr>{''.join(f'<th>{c}</th>' for c in hh)}</tr></thead><tbody>{rr}</tbody></table></div>"
 
-        # Assemble — only show panels that have real data
-        panels = [Div(panel("Daily Mileage", mt, dot=I), panel("Vehicle Utilization", uu, dot=I), cls="grid two")]
-        second_row = []
+        # Assemble — always show: mileage, utilization, trips. Idle only if data exists.
+        row1 = Div(panel("Daily Mileage", mt, dot=I), panel("Vehicle Utilization", uu, dot=I), cls="grid two")
+        row2_items = [panel("Trip Count per Day", tc, dot="#ea580c")]
         if ih != _empty:
-            second_row.append(panel("Idle Time", ih, dot="#ea580c"))
-        if second_row:
-            panels.append(Div(*second_row, cls="grid two mt" if len(second_row) == 2 else "grid mt"))
+            row2_items.append(panel("Idle Time", ih, dot="#ea580c"))
+        row2 = Div(*row2_items, cls="grid two")
+        rows = [row1, row2]
         if vt != _empty:
-            panels.append(Div(panel("Vehicle Details", NotStr(vt), scroll=True), cls="grid mt"))
-
-        return ctrl, kpi_row, *panels
+            rows.append(Div(panel("Vehicle Details", NotStr(vt), scroll=True), cls="grid mt"))
+        return ctrl, kpi_row, *rows
 
     # ── Safety ──
     if section_key == "safety":
@@ -1293,25 +1307,37 @@ def render_gt_section(section_key="fleet", range_key="all"):
         mt = GT.vehicle_maintenance_status(since, until)
         fl = GT.maintenance_metrics(since, until)
 
-        active_mt = [v for v in mt if v.get("odo_mi",0) > 0]
+        total_odo = sum(v.get("odo_mi",0) for v in mt)
+        kpi_row = Div(
+            _kpi("Vehicles Tracked", len(mt)),
+            _kpi("Total Odometer", round(total_odo)),
+            cls="kpis",
+        )
+
+        # Odometer per Vehicle — comparative
         odom_html = _empty
-        if active_mt:
-            fig = go.Figure(go.Bar(x=[v["odo_mi"] for v in active_mt],
+        active_mt = [v for v in mt if v.get("odo_mi",0) > 0]
+        if len(active_mt) >= 2:
+            colors = [_rgba(I, max(0.3, 1 - (i/len(active_mt))*0.7)) for i in range(len(active_mt))]
+            f = go.Figure(go.Bar(x=[v["odo_mi"] for v in active_mt],
                 y=[v["label"] for v in active_mt],
-                orientation="h", marker=dict(color=I),
+                orientation="h", marker=dict(color=colors),
                 hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
-            fig.update_layout(yaxis=dict(autorange="reversed"))
-            odom_html = _fig_html(fig)
+            f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Odometer (mi)"))
+            odom_html = _fig_html(f, 300)
 
-        freq = fl.get("fault_frequency", [])
+        # Fault frequency — only if 2+ different fault codes
         flt_html = _empty
-        if freq:
-            fig = go.Figure(go.Bar(x=[f["count"] for f in freq], y=[f["fault_code"] for f in freq],
-                orientation="h", marker=dict(color="#dc2626"),
-                hovertemplate="%{y}<br>%{x}<extra></extra>"))
-            fig.update_layout(yaxis=dict(autorange="reversed"))
-            flt_html = _fig_html(fig)
+        freq = fl.get("fault_frequency", [])
+        if len(freq) >= 2:
+            colors = [_rgba("#dc2626", max(0.3, 1 - (i/len(freq))*0.6)) for i in range(len(freq))]
+            f = go.Figure(go.Bar(x=[f["count"] for f in freq], y=[f["fault_code"] for f in freq],
+                orientation="h", marker=dict(color=colors),
+                hovertemplate="%{y}<br>%{x} occurrences<extra></extra>"))
+            f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Occurrences"))
+            flt_html = _fig_html(f, 300)
 
+        # Maintenance table
         mt_rows = [[v["label"], f"{v['odo_mi']:,.0f}", f"{v['engine_hours']:,.0f}", f"{v['total_miles']:,.0f}", str(v["trip_count"])]
                    for v in mt if v.get("odo_mi",0) > 0 or v.get("engine_hours",0) > 0]
         mtt_html = _empty
@@ -1324,10 +1350,14 @@ def render_gt_section(section_key="fleet", range_key="all"):
             trs = "".join(trs_parts)
             mtt_html = f"<div class='tbl-wrap' style='max-height:400px'><table class='data'><thead><tr>{''.join(f'<th>{c}</th>' for c in h)}</tr></thead><tbody>{trs}</tbody></table></div>"
 
-        return ctrl, Div(
-            Div(panel("Vehicle Odometer", odom_html, dot=I), panel("Fault Frequency", flt_html, dot="#dc2626"), cls="grid two"),
-            Div(panel("Maintenance Status", NotStr(mtt_html), scroll=True), cls="grid mt"),
-        )
+        # Assemble
+        row1_items = [panel("Vehicle Odometer", odom_html, dot=I)]
+        if flt_html != _empty:
+            row1_items.append(panel("Fault Frequency", flt_html, dot="#dc2626"))
+        rows = [Div(*row1_items, cls="grid two" if len(row1_items) == 2 else "grid")]
+        if mtt_html != _empty:
+            rows.append(Div(panel("Maintenance Status", NotStr(mtt_html), scroll=True), cls="grid mt"))
+        return ctrl, kpi_row, *rows
 
     return ctrl, Div(H2("GeoTab"), Div("Section not found.", cls="chart-empty"))
 

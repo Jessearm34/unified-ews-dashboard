@@ -1393,6 +1393,8 @@ async def gt_check_vehicles(req):
             tcount = conn.execute(text("SELECT COUNT(*) FROM trips")).scalar()
             trange = conn.execute(text("SELECT MIN(start_time) as min_ts, MAX(start_time) as max_ts FROM trips")).one()
         parts = [f"Trips: {tcount} total, from {trange.min_ts} to {trange.max_ts}"]
+        dc = conn.execute(text("SELECT COUNT(*) FROM drivers")).scalar()
+        parts.append(f"Drivers: {dc}")
         end_date = date.today()
         parts.append(f"Range all: {date(2020,1,1)} to {end_date}")
         parts.append(f"resolve_date_range('all'): start={date(2020,1,1)} end={date(end_date.year, end_date.month, 1) - timedelta(days=1)}")

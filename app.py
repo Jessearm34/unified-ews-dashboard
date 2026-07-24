@@ -1139,21 +1139,7 @@ def render_gt_section(section_key="fleet", range_key="all"):
             f.update_layout(yaxis=dict(autorange="reversed"))
             uu = _fig_html(f)
 
-        # 3. Trips per Driver — comparative
-        spd = _empty
-        dr_spd = GT.driver_metrics(since, until)
-        if dr_spd:
-            active = [d for d in dr_spd if d["trip_count"] > 0]
-            if len(active) >= 2:
-                names = [d["name"] for d in active]
-                trips = [d["trip_count"] for d in active]
-                f = go.Figure(go.Bar(x=trips, y=names,
-                    orientation="h", marker=dict(color="#ea580c"),
-                    hovertemplate="%{y}<br>%{x} trips<extra></extra>"))
-                f.update_layout(yaxis=dict(autorange="reversed"))
-                spd = _fig_html(f, 250)
-
-        # 4. Idle Time — comparative (only if 2+ vehicles have real data)
+        # 3. Idle Time — comparative (only if 2+ vehicles have real data)
         ih = _empty
         iv = il.get("vehicles", [])
         av = [v for v in iv if v["idle_pct"] > 1] if iv else []
@@ -1180,8 +1166,6 @@ def render_gt_section(section_key="fleet", range_key="all"):
         # Assemble — only show panels that have real data
         panels = [Div(panel("Daily Mileage", mt, dot=I), panel("Vehicle Utilization", uu, dot=I), cls="grid two")]
         second_row = []
-        if spd != _empty:
-            second_row.append(panel("Trips per Driver", spd, dot="#ea580c"))
         if ih != _empty:
             second_row.append(panel("Idle Time", ih, dot="#ea580c"))
         if second_row:
@@ -1393,8 +1377,11 @@ async def gt_check_vehicles(req):
             tcount = conn.execute(text("SELECT COUNT(*) FROM trips")).scalar()
             trange = conn.execute(text("SELECT MIN(start_time) as min_ts, MAX(start_time) as max_ts FROM trips")).one()
         parts = [f"Trips: {tcount} total, from {trange.min_ts} to {trange.max_ts}"]
-        dc = conn.execute(text("SELECT COUNT(*) FROM drivers")).scalar() if conn.dialect.has_table(conn, 'drivers') else 0
-        parts.append(f"Drivers: {dc}")
+        try:
+            dc = conn.execute(text("SELECT COUNT(*) FROM drivers")).scalar()
+            parts.append(f"Drivers: {dc}")
+        except Exception:
+            parts.append("Drivers: table not found")
         end_date = date.today()
         parts.append(f"Range all: {date(2020,1,1)} to {end_date}")
         parts.append(f"resolve_date_range('all'): start={date(2020,1,1)} end={date(end_date.year, end_date.month, 1) - timedelta(days=1)}")

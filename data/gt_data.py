@@ -191,14 +191,25 @@ def driver_metrics(since: datetime | None = None, until: datetime | None = None)
         since = datetime.now(timezone.utc) - timedelta(days=365)
     if until is None:
         until = datetime.now(timezone.utc)
-    return _exec(
-        "SELECT d.id, d.name, COUNT(t.id) as trip_count, "
-        "COALESCE(SUM(t.distance_miles),0) as distance_driven, "
-        "COALESCE(AVG(t.distance_miles),0) as average_trip_length "
-        "FROM drivers d LEFT JOIN trips t ON t.driver_id=d.id AND t.start_time BETWEEN :s AND :u "
-        "GROUP BY d.id, d.name ORDER BY distance_driven DESC",
-        {"s": since, "u": until}
-    )
+    try:
+        return _exec(
+            "SELECT d.id, d.name, COUNT(t.id) as trip_count, "
+            "COALESCE(SUM(t.distance_miles),0) as distance_driven, "
+            "COALESCE(AVG(t.distance_miles),0) as average_trip_length "
+            "FROM drivers d LEFT JOIN trips t ON t.driver_id=d.id AND t.start_time BETWEEN :s AND :u "
+            "GROUP BY d.id, d.name ORDER BY distance_driven DESC",
+            {"s": since, "u": until}
+        )
+    except Exception:
+        return _exec(
+            "SELECT v.id, COALESCE(v.assigned_driver,v.license_plate,v.vin) as name, "
+            "COUNT(t.id) as trip_count, "
+            "COALESCE(SUM(t.distance_miles),0) as distance_driven, "
+            "COALESCE(AVG(t.distance_miles),0) as average_trip_length "
+            "FROM vehicles v LEFT JOIN trips t ON t.vehicle_id=v.id AND t.start_time BETWEEN :s AND :u "
+            "GROUP BY v.id, v.assigned_driver, v.license_plate, v.vin ORDER BY distance_driven DESC",
+            {"s": since, "u": until}
+        )
 
 
 def maintenance_metrics(since: datetime | None = None, until: datetime | None = None) -> dict[str, Any]:
@@ -356,19 +367,22 @@ def safety_driver_rankings(since: datetime | None = None, until: datetime | None
         since = datetime.now(timezone.utc) - timedelta(days=365)
     if until is None:
         until = datetime.now(timezone.utc)
-    rows = _exec(
-        "SELECT d.name, COUNT(t.id) as trip_count, "
-        "COALESCE(SUM(t.distance_miles),0) as miles, "
-        "COALESCE(SUM(CASE WHEN t.is_seatbelt_off=1 THEN 1 ELSE 0 END),0) as seatbelt_violations, "
-        "COUNT(CASE WHEN t.is_seatbelt_off IS NOT NULL THEN 1 END) as seatbelt_recorded, "
-        "COALESCE(SUM(CASE WHEN t.after_hours_distance>0 THEN 1 ELSE 0 END),0) as after_hours_trips, "
-        "COALESCE(SUM(t.idle_time),0) as idle_time, "
-        "COALESCE(SUM(CASE WHEN t.maximum_speed>70 THEN 1 ELSE 0 END),0) as speeding_trips, "
-        "COALESCE(SUM(EXTRACT(EPOCH FROM (t.end_time-t.start_time))),0) as total_time "
-        "FROM drivers d JOIN trips t ON t.driver_id=d.id "
-        "WHERE t.start_time BETWEEN :s AND :u GROUP BY d.id, d.name ORDER BY miles DESC",
-        {"s": since, "u": until}
-    )
+    try:
+        rows = _exec(
+            "SELECT d.name, COUNT(t.id) as trip_count, "
+            "COALESCE(SUM(t.distance_miles),0) as miles, "
+            "COALESCE(SUM(CASE WHEN t.is_seatbelt_off=1 THEN 1 ELSE 0 END),0) as seatbelt_violations, "
+            "COUNT(CASE WHEN t.is_seatbelt_off IS NOT NULL THEN 1 END) as seatbelt_recorded, "
+            "COALESCE(SUM(CASE WHEN t.after_hours_distance>0 THEN 1 ELSE 0 END),0) as after_hours_trips, "
+            "COALESCE(SUM(t.idle_time),0) as idle_time, "
+            "COALESCE(SUM(CASE WHEN t.maximum_speed>70 THEN 1 ELSE 0 END),0) as speeding_trips, "
+            "COALESCE(SUM(EXTRACT(EPOCH FROM (t.end_time-t.start_time))),0) as total_time "
+            "FROM drivers d JOIN trips t ON t.driver_id=d.id "
+            "WHERE t.start_time BETWEEN :s AND :u GROUP BY d.id, d.name ORDER BY miles DESC",
+            {"s": since, "u": until}
+        )
+    except Exception:
+        return []
     result = []
     for r in rows:
         tc = int(r["trip_count"])

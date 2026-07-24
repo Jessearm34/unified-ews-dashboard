@@ -285,7 +285,6 @@ PLATFORMS = [
         "icon": "🚛",
         "sections": [
             ("fleet", "Fleet Overview", "📊"),
-            ("safety", "Safety", "🛡️"),
             ("maintenance", "Maintenance", "🔧"),
         ],
     },
@@ -456,6 +455,26 @@ def shell(content, active_platform=None, active_section="overview", title=""):
                 Div(Div(cls="spinner"), "Loading...", cls="loading-zone"),
                 id="content"),
             cls="main"),
+        Script("""
+document.body.addEventListener('htmx:afterSwap', function() {
+  var params = new URLSearchParams(window.location.search);
+  var plat = params.get('platform') || '';
+  var sec = params.get('section') || 'overview';
+  document.querySelectorAll('.nav-link').forEach(function(el) {
+    el.classList.remove('active');
+    el.style.opacity = '0.6';
+  });
+  document.querySelectorAll('.sidebar a').forEach(function(link) {
+    var href = link.getAttribute('href') || '';
+    var platMatch = href.match(/[?&]platform=([^&]+)/);
+    var secMatch = href.match(/[?&]section=([^&]+)/);
+    if (platMatch && platMatch[1] === plat && secMatch && secMatch[1] === sec) {
+      link.classList.add('active');
+      link.style.opacity = '1';
+    }
+  });
+});
+"""),
         cls="layout",
     )
 
@@ -1110,9 +1129,13 @@ def render_gt_section(section_key="fleet", range_key="all"):
         ut = GT.vehicle_utilization(since, until)
         il = GT.idling_summary(since, until)
 
+        total_trips = sum(r.get("trips",0) for r in tr) if tr else 0
+        total_hrs = sum(u["hours_driven"] for u in ut) if ut else 0
         kpi_row = Div(
             _kpi("Active Vehicles", s["active_vehicles"], f"of {s['total_vehicles']}"),
             _kpi("Fleet Miles", s["total_fleet_miles"]),
+            _kpi("Total Trips", total_trips),
+            _kpi("Drive Hours", round(total_hrs)),
             cls="kpis",
         )
 
@@ -1142,12 +1165,12 @@ def render_gt_section(section_key="fleet", range_key="all"):
             f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Miles Driven"))
             uu = _fig_html(f, 350)
 
-        # 3. Trip Count per Day — temporal bar (always has data with daily_trends)
+        # 3. Trip Count per Day — temporal bar
         tc = _empty
-        if tr and sum(r.get("trip_count",0) for r in tr) > 0:
+        if tr and sum(r.get("trips",0) for r in tr) > 0:
             df = pd.DataFrame(tr).sort_values("day")
             df["d"] = pd.to_datetime(df["day"])
-            f = go.Figure(go.Bar(x=df["d"], y=df["trip_count"],
+            f = go.Figure(go.Bar(x=df["d"], y=df["trips"],
                 marker=dict(color="#ea580c", opacity=0.7),
                 hovertemplate="%{x|%b %d}<br>%{y} trips<extra></extra>"))
             tc = _fig_html(f, 200)

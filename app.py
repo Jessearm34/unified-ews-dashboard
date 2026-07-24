@@ -1318,6 +1318,23 @@ def render_gt_section(section_key="fleet", range_key="all"):
     return ctrl, Div(H2("GeoTab"), Div("Section not found.", cls="chart-empty"))
 
 
+# ── Public GT debug endpoint (no auth) ──────────────────────────────
+@rt("/_gt_debug/{section}")
+async def gt_debug(request, section: str = "fleet"):
+    """Auth-free GT section preview."""
+    try:
+        from fasthtml.common import HTMLResponse
+        result = render_gt_section(section, "all")
+        if isinstance(result, tuple) and len(result) >= 2:
+            html = "".join(str(item) for item in result[1:])
+        else:
+            html = str(result)
+        return HTMLResponse(html)
+    except Exception as e:
+        import traceback
+        return f"<pre>Error: {e}\n{traceback.format_exc()}</pre>", 500
+
+
 _empty = Div("No data for this period.", cls="chart-empty")
 
 

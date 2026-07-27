@@ -228,19 +228,26 @@ async def logout(request: Request):
 # Catch-all: serve the SvelteKit SPA
 # ---------------------------------------------------------------------------
 
-_BUILD_DIR = Path(__file__).resolve().parent.parent / "build"
+_BUILD_DIR = Path(__file__).resolve().parent.parent / "static"
+# Also check "build" as fallback
+_BUILD_DIR_FALLBACK = Path(__file__).resolve().parent.parent / "build"
 
 _INDEX_HTML: str | None = None
 
 # Try to load the built index.html once
-if _BUILD_DIR.is_dir():
-    _index_path = _BUILD_DIR / "index.html"
-    if _index_path.is_file():
-        _INDEX_HTML = _index_path.read_text(encoding="utf-8")
-        log.info("SvelteKit build found at %s — serving SPA", _BUILD_DIR)
+for _try_dir in (_BUILD_DIR, _BUILD_DIR_FALLBACK):
+    if _try_dir.is_dir():
+        _index_path = _try_dir / "index.html"
+        if _index_path.is_file():
+            _INDEX_HTML = _index_path.read_text(encoding="utf-8")
+            _BUILD_DIR = _try_dir
+            log.info("SvelteKit build found at %s — serving SPA", _try_dir)
+            break
+        else:
+            log.warning("Build directory exists but no index.html at %s", _index_path)
     else:
-        log.warning("Build directory exists but no index.html at %s", _index_path)
-else:
+        log.debug("No build directory at %s", _try_dir)
+if _INDEX_HTML is None:
     log.info("No SvelteKit build yet — serving fallback placeholder")
 
 

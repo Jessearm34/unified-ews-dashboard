@@ -4,30 +4,37 @@
 	let { html = '', title = '' } = $props();
 
 	let container;
-	let chartId = $derived(`chart-${Math.random().toString(36).slice(2, 9)}`);
 
 	onMount(() => {
 		if (!html || !container) return;
-		// Remove any existing script tags from html and insert into DOM
-		const div = document.createElement('div');
-		div.innerHTML = html;
-		// Move all child nodes (including plot divs) into container
+
+		// Parse the chart HTML into a temp element
+		const temp = document.createElement('div');
+		temp.innerHTML = html;
+
+		// Grab scripts BEFORE moving children (they get moved too)
+		const scripts = Array.from(temp.querySelectorAll('script'));
+
+		// Find the plot div — support both old (.js-plotly-plot) and new (.plotly-graph-div) Plotly classes
+		const plotDiv = temp.querySelector('.js-plotly-plot, .plotly-graph-div');
+
+		// Clear container and insert the plot div
 		container.innerHTML = '';
-		const plotDiv = div.querySelector('.js-plotly-plot');
 		if (plotDiv) {
 			container.appendChild(plotDiv);
 		} else {
-			// Fallback: insert all content
-			while (div.firstChild) {
-				container.appendChild(div.firstChild);
+			// Fallback: move all content
+			while (temp.firstChild) {
+				container.appendChild(temp.firstChild);
 			}
 		}
-		// Re-execute any inline scripts if needed
-		div.querySelectorAll('script').forEach(s => {
+
+		// Execute scripts — Plotly.newPlot targets the div by ID which is now in the DOM
+		scripts.forEach((s) => {
 			const ns = document.createElement('script');
 			for (const attr of s.attributes) ns.setAttribute(attr.name, attr.value);
 			ns.textContent = s.textContent;
-			document.head.appendChild(ns);
+			container.appendChild(ns);
 		});
 	});
 </script>

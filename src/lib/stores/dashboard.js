@@ -45,8 +45,6 @@ export const platforms = [
 		icon: '🚛',
 		sections: [
 			{ key: 'fleet', label: 'Fleet Overview', icon: '📊' },
-			{ key: 'safety', label: 'Safety', icon: '🛡️' },
-			{ key: 'exceptions', label: 'Exceptions', icon: '⚠️' },
 			{ key: 'maintenance', label: 'Maintenance', icon: '🔧' }
 		]
 	}

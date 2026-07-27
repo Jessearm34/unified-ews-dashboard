@@ -165,14 +165,11 @@ def _gt_section_impl(section: str, range_key: str):
             f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Idle %"))
             charts["idle_time"] = {"html": _fig_html(f, 250), "title": "Idle Time by Vehicle"}
 
-        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
+        # ── Safety (merged into Fleet) ──────────────────────────────
 
-    elif section == "safety":
         sb = GT.seatbelt_analysis(since, until)
         ah = GT.after_hours_analysis(since, until)
         sd = GT.safety_driver_rankings(since, until)
-        charts = {}
-        kpis = []
 
         # Seatbelt chart
         if sb:
@@ -230,30 +227,6 @@ def _gt_section_impl(section: str, range_key: str):
             charts["safety_table"] = {"html": sd_table, "title": "Safety Details"}
 
         return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
-
-    elif section == "exceptions":
-        exc = GT.exception_analysis(since, until)
-        total = exc.get("total", 0)
-        charts = {}
-        if total > 0:
-            by_type = exc.get("by_type", [])
-            by_vehicle = exc.get("by_vehicle", [])
-            if by_type:
-                fig = go.Figure(go.Bar(
-                    x=[t["count"] for t in by_type], y=[t["event_type"] for t in by_type],
-                    orientation="h", marker=dict(color="#dc2626"),
-                    hovertemplate="%{y}<br>%{x}<extra></extra>"))
-                fig.update_layout(yaxis=dict(autorange="reversed"))
-                charts["by_type"] = {"html": _fig_html(fig), "title": f"Exceptions by Type ({total})"}
-            if by_vehicle:
-                labels = [v.get("driver", "") or v["vehicle"] for v in by_vehicle]
-                fig = go.Figure(go.Bar(
-                    x=[v["count"] for v in by_vehicle], y=labels,
-                    orientation="h", marker=dict(color="#ea580c"),
-                    hovertemplate="%{y}<br>%{x}<extra></extra>"))
-                fig.update_layout(yaxis=dict(autorange="reversed"))
-                charts["by_vehicle"] = {"html": _fig_html(fig), "title": "Exceptions by Vehicle"}
-        return {"kpis": [], "charts": charts, "loaded_at": now_iso, "has_more": {}}
 
     elif section == "maintenance":
         mt = GT.vehicle_maintenance_status(since, until)

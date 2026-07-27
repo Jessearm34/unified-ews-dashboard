@@ -63,6 +63,22 @@ def _load_gt():
 
 @router.get("/_api/gt/{section}")
 async def gt_section(section: str = "fleet", range: str = Query(default="all")):
+    try:
+        return _gt_section_impl(section, range)
+    except Exception as e:
+        import traceback, logging
+        log = logging.getLogger("ewsd")
+        log.error("GT section '%s' failed: %s\n%s", section, e, traceback.format_exc())
+        return {
+            "kpis": [],
+            "charts": {},
+            "loaded_at": datetime.now(timezone.utc).isoformat(),
+            "has_more": {},
+            "error": f"Internal error in GT/{section}: {e}",
+        }
+
+
+def _gt_section_impl(section: str, range: str):
     start, end = resolve_date_range(range)
     since = datetime.combine(start, datetime.min.time()).replace(tzinfo=timezone.utc)
     until = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)

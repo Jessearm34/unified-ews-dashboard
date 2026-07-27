@@ -1,0 +1,14 @@
+node_modules/
+.svelte-kit/
+build/
+.git/
+.env
+.env.*
+__pycache__/
+*.pyc
+.DS_Store
+.venv*
+*.egg-info/
+.vscode/
+.idea/
+*.log

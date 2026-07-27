@@ -20,13 +20,12 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy Python app first, then SvelteKit build (preserves the build)
+# Copy Python app
 COPY api/ ./api/
 COPY data/ ./data/
 COPY charts/ ./charts/
-COPY static/.gitkeep ./
 
-# Copy SvelteKit build from stage 1 (overwrites empty static/)
+# Copy SvelteKit build from stage 1
 COPY --from=frontend /app/build ./static/
 
 EXPOSE 8000

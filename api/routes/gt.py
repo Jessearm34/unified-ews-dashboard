@@ -64,7 +64,7 @@ def _load_gt():
 @router.get("/_api/gt/{section}")
 async def gt_section(section: str = "fleet", range: str = Query(default="all")):
     try:
-        return _gt_section_impl(section, range)
+        return _gt_section_impl(section, range_key=range)
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
@@ -84,8 +84,8 @@ async def gt_section(section: str = "fleet", range: str = Query(default="all")):
         }
 
 
-def _gt_section_impl(section: str, range: str):
-    start, end = resolve_date_range(range)
+def _gt_section_impl(section: str, range_key: str):
+    start, end = resolve_date_range(range_key)
     since = datetime.combine(start, datetime.min.time()).replace(tzinfo=timezone.utc)
     until = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)
     now_iso = datetime.now(timezone.utc).isoformat()

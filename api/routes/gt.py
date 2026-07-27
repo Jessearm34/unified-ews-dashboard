@@ -66,15 +66,21 @@ async def gt_section(section: str = "fleet", range: str = Query(default="all")):
     try:
         return _gt_section_impl(section, range)
     except Exception as e:
-        import traceback, logging
-        log = logging.getLogger("ewsd")
-        log.error("GT section '%s' failed: %s\n%s", section, e, traceback.format_exc())
+        import traceback
+        tb = traceback.format_exc()
+        # Log the full traceback for Railway logs
+        try:
+            import logging
+            logging.getLogger("ewsd").error("GT section '%s' failed:\n%s", section, tb)
+        except Exception:
+            pass
         return {
             "kpis": [],
             "charts": {},
             "loaded_at": datetime.now(timezone.utc).isoformat(),
             "has_more": {},
             "error": f"Internal error in GT/{section}: {e}",
+            "traceback": tb[-500:],  # last 500 chars
         }
 
 

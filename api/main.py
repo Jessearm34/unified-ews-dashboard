@@ -32,9 +32,54 @@ logging.basicConfig(
 log = logging.getLogger("ewsd")
 
 # ---------------------------------------------------------------------------
+# Lifespan (must be defined before app)
+# ---------------------------------------------------------------------------
+
+from contextlib import asynccontextmanager
+
+
+def _preload_data() -> None:
+    """Background preload — runs in a daemon thread after startup."""
+    time.sleep(1)
+    log.info("Preloading data in background…")
+
+    for name, loader, cache_key in [
+        ("QuickBooks", lambda: __import__("data.qb_data", fromlist=["qb_load_dataset"]).qb_load_dataset(), "qb"),
+        ("SiteDocs", lambda: __import__("data.sd_data", fromlist=["sd_load_dataset"]).sd_load_dataset(), "sd"),
+    ]:
+        try:
+            ds = loader()
+            if ds is not None:
+                cache.cached(cache_key, lambda: ds, ttl=cfg.DATA_CACHE_TTL)
+                log.info("Preloaded %s data", name)
+        except Exception as exc:
+            log.warning("Could not preload %s data: %s", name, exc)
+
+    try:
+        eng = __import__("data.gt_data", fromlist=["gt_engine"]).gt_engine()
+        if eng is not None:
+            cache.cached("gt", lambda: eng, ttl=cfg.DATA_CACHE_TTL)
+            log.info("Preloaded GeoTab engine")
+    except Exception as exc:
+        log.info("GeoTab engine not available (non-fatal): %s", exc)
+
+    log.info("Background data preloading complete")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown lifecycle."""
+    log.info("EWS Unified Dashboard starting up")
+    t = threading.Thread(target=_preload_data, daemon=True)
+    t.start()
+    yield
+    log.info("EWS Unified Dashboard shutting down")
+
+
+# ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
-app = FastAPI(title="EWS Unified Dashboard")
+app = FastAPI(title="EWS Unified Dashboard", lifespan=lifespan)
 
 # -- CORS -------------------------------------------------------------------
 _dev_origin = "http://localhost:5173"
@@ -293,56 +338,6 @@ async def catch_all(request: Request, path: str):
 </body>
 </html>"""
     return HTMLResponse(html)
-
-
-# ---------------------------------------------------------------------------
-# Startup: preload data in background
-# ---------------------------------------------------------------------------
-
-
-@app.on_event("startup")
-async def startup():
-    log.info("EWS Unified Dashboard starting up")
-
-    # Preload data in a background thread so the first request doesn't wait
-    def _preload():
-        time.sleep(1)  # Let the server finish starting
-        log.info("Preloading data in background…")
-
-        try:
-            from data.qb_data import qb_load_dataset
-
-            ds = qb_load_dataset()
-            if ds is not None:
-                cache.cached("qb", lambda: ds, ttl=cfg.DATA_CACHE_TTL)
-                log.info("Preloaded QuickBooks data")
-        except Exception as exc:
-            log.warning("Could not preload QuickBooks data: %s", exc)
-
-        try:
-            from data.sd_data import sd_load_dataset
-
-            ds = sd_load_dataset()
-            if ds is not None:
-                cache.cached("sd", lambda: ds, ttl=cfg.DATA_CACHE_TTL)
-                log.info("Preloaded SiteDocs data")
-        except Exception as exc:
-            log.warning("Could not preload SiteDocs data: %s", exc)
-
-        try:
-            from data.gt_data import gt_engine
-
-            eng = gt_engine()
-            if eng is not None:
-                cache.cached("gt", lambda: eng, ttl=cfg.DATA_CACHE_TTL)
-                log.info("Preloaded GeoTab engine")
-        except Exception as exc:
-            log.info("GeoTab engine not available (non-fatal): %s", exc)
-
-        log.info("Background data preloading complete")
-
-    t = threading.Thread(target=_preload, daemon=True)
-    t.start()
 
 
 # ---------------------------------------------------------------------------

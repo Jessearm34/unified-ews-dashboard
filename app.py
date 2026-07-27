@@ -82,7 +82,7 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
 /* Platform group headers */
 .nav-group summary { display: flex; align-items: center; gap: 11px; padding: 10px 12px;
   border-radius: 10px; color: #b8c6d6; text-decoration: none; font-size: 14px;
-  font-weight: 600; cursor: pointer; list-style: none; }
+  font-weight: 600; cursor: pointer; list-style: none; outline: none; }
 .nav-group summary::-webkit-details-marker { display: none; }
 .nav-group summary:hover { background: var(--navy-2); color: #fff; }
 .nav-group summary .arrow { color: #5a7a9a; font-size: 11px; margin-left: auto; transition: transform .2s; }
@@ -91,14 +91,18 @@ body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif;
 /* Sub-tab links */
 .nav-group .sub { padding-left: 8px; }
 .nav-group .sub a { display: flex; align-items: center; gap: 11px; padding: 8px 12px 8px 20px;
-  border-radius: 8px; color: #889bb3; text-decoration: none; font-size: 13px; font-weight: 500; }
+  border-radius: 8px; color: #889bb3; text-decoration: none; font-size: 13px; font-weight: 500;
+  outline: none; -webkit-tap-highlight-color: transparent; }
 .nav-group .sub a:hover { background: var(--navy-2); color: #fff; }
+.nav-group .sub a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .nav-group .sub a.active { background: var(--accent); color: #fff; }
 
 /* Overview link at top */
 .nav-link { display: flex; align-items: center; gap: 11px; padding: 10px 12px;
-  border-radius: 10px; color: #b8c6d6; text-decoration: none; font-size: 14px; font-weight: 600; }
+  border-radius: 10px; color: #b8c6d6; text-decoration: none; font-size: 14px; font-weight: 600;
+  outline: none; -webkit-tap-highlight-color: transparent; }
 .nav-link:hover { background: var(--navy-2); color: #fff; }
+.nav-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .nav-link.active { background: var(--accent); color: #fff; }
 
 .sidebar .foot { margin-top: auto; font-size: 11px; color: #64788f; padding: 8px; }

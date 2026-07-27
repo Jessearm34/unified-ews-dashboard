@@ -464,7 +464,7 @@ document.body.addEventListener('htmx:afterSwap', function() {
   var params = new URLSearchParams(window.location.search);
   var plat = params.get('platform') || '';
   var sec = params.get('section') || 'overview';
-  document.querySelectorAll('.nav-link').forEach(function(el) {
+  document.querySelectorAll('.sidebar a').forEach(function(el) {
     el.classList.remove('active');
     el.style.opacity = '0.6';
   });

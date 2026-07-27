@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 import api.config as cfg
@@ -299,10 +299,19 @@ if _INDEX_HTML is None:
 @app.get("/{path:path}", include_in_schema=False)
 async def catch_all(request: Request, path: str):
     """Serve the SvelteKit SPA or a placeholder message."""
-    # Don't intercept API routes or static assets that got through
-    if path.startswith("_api/") or path.startswith("_app/") or path in ("favicon.ico",):
+    # API routes that don't exist — return 404 JSON
+    if path.startswith("_api/"):
         return JSONResponse(
             {"error": f"Route '{path}' not found"}, status_code=404
+        )
+
+    # Serve static assets (JS, CSS, favicon) from the build directory
+    if path.startswith("_app/") or path in ("favicon.png", "favicon.ico"):
+        file_path = _BUILD_DIR / path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return JSONResponse(
+            {"error": f"Asset '{path}' not found"}, status_code=404
         )
 
     if _INDEX_HTML is not None:

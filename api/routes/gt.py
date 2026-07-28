@@ -111,7 +111,7 @@ def _gt_section_impl(section: str, range_key: str):
             _kpi_dict("Total Trips", total_trips),
             _kpi_dict("Drive Hours", round(total_hrs)),
             _kpi_dict("Idle Cost", round(ic['estimated_cost']), unit="$",
-                      hint=f"{ic['total_idle_hours']} hrs · ${ic['savings_target']:,.0f} savings target"),
+                      hint=f"{ic['total_idle_hours']} hrs · ${ic['cost_per_hour']:.0f}/hr"),
         ]
 
         charts = {}

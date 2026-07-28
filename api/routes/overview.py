@@ -278,18 +278,6 @@ def overview(range: str = Query("ytd", description="Date range key"),
     except Exception:
         pass
 
-    # Person-Level Profiles — cross-platform join
-    try:
-        profiles = ISS.cross_person_profiles(sd_ds=sd_ds)
-        matched = [p for p in profiles if p.get("matched")]
-        if matched:
-            charts["person-profiles"] = {
-                "html": XC.person_profiles_table(profiles),
-                "title": f"Combined Profiles ({len(matched)} matched)",
-            }
-    except Exception:
-        pass
-
     return {
         "kpis": kpis,
         "charts": charts,

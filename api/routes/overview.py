@@ -278,18 +278,6 @@ def overview(range: str = Query("ytd", description="Date range key"),
     except Exception:
         pass
 
-    # Safety-Fleet Correlation — cross-platform (SD BBSO vs GT speeding)
-    try:
-        if sd_ds is not None and hasattr(sd_ds, 'forms') and not sd_ds.forms.empty:
-            gt_since = datetime.combine(prev_start, datetime.min.time()).replace(tzinfo=timezone.utc)
-            gt_until = datetime.combine(prev_end, datetime.max.time()).replace(tzinfo=timezone.utc)
-            charts["safety-fleet"] = {
-                "html": XC.safety_fleet_dual(sd_ds.forms, gt_since, gt_until),
-                "title": "Safety ↔ Fleet Correlation",
-            }
-    except Exception:
-        pass
-
     # Person-Level Profiles — cross-platform join
     try:
         profiles = ISS.cross_person_profiles(sd_ds=sd_ds)

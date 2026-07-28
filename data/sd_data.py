@@ -300,6 +300,85 @@ def incident_by_status(incidents: pd.DataFrame) -> pd.DataFrame:
     return incidents.groupby(col).size().reset_index(name="Count").sort_values("Count", ascending=False)
 
 
+def incident_close_time(incidents: pd.DataFrame) -> dict[str, Any]:
+    """Average time-to-close for incidents.
+
+    Computes mean and median days between CreatedOn and the close/resolution
+    date.  Falls back to ``LatestStatus`` + ``LastModifiedOn`` if available,
+    otherwise estimates from current date vs CreatedOn for closed items.
+
+    Returns:
+        {"mean_days": float, "median_days": float, "closed_count": int,
+         "open_avg_days": float, "by_type": [{"TypeName", "mean_days", "count"}]}
+    """
+    if incidents.empty:
+        return {"mean_days": 0, "median_days": 0, "closed_count": 0,
+                "open_avg_days": 0, "by_type": []}
+
+    df = incidents.copy()
+    if "CreatedOn" not in df.columns:
+        return {"mean_days": 0, "median_days": 0, "closed_count": 0,
+                "open_avg_days": 0, "by_type": []}
+
+    df["_created"] = pd.to_datetime(df["CreatedOn"], errors="coerce")
+    df = df.dropna(subset=["_created"])
+    if df.empty:
+        return {"mean_days": 0, "median_days": 0, "closed_count": 0,
+                "open_avg_days": 0, "by_type": []}
+
+    now = pd.Timestamp.now()
+
+    # Check for a close/resolution date column
+    close_col = None
+    for col in ("ClosedOn", "LastModifiedOn", "ResolvedOn", "ModifiedOn"):
+        if col in df.columns:
+            close_col = col
+            break
+
+    if close_col and "LatestStatus" in df.columns:
+        # Use actual close date for closed items
+        df["_closed_dt"] = pd.to_datetime(df[close_col], errors="coerce")
+        closed = df[df["LatestStatus"].astype(str).str.lower() == "closed"].copy()
+        closed = closed.dropna(subset=["_closed_dt"])
+        if not closed.empty:
+            closed["_days"] = (closed["_closed_dt"] - closed["_created"]).dt.days
+            mean_d = round(closed["_days"].mean(), 1)
+            median_d = round(closed["_days"].median(), 1)
+
+            # By-type breakdown
+            by_type = []
+            if "TypeName" in closed.columns:
+                by_type = closed.groupby("TypeName")["_days"].agg(["mean", "count"]).reset_index()
+                by_type.columns = ["TypeName", "mean_days", "count"]
+                by_type["mean_days"] = by_type["mean_days"].round(1)
+                by_type = by_type.sort_values("mean_days", ascending=False).to_dict("records")
+
+            return {"mean_days": mean_d, "median_days": median_d,
+                    "closed_count": len(closed), "open_avg_days": 0, "by_type": by_type}
+
+    # Fallback: estimate from current date
+    has_status = "LatestStatus" in df.columns
+    if has_status:
+        closed_mask = df["LatestStatus"].astype(str).str.lower() == "closed"
+        closed = df[closed_mask].copy()
+        if not closed.empty:
+            closed["_days"] = (now - closed["_created"]).dt.days
+            mean_d = round(closed["_days"].mean(), 1)
+            median_d = round(closed["_days"].median(), 1)
+            by_type = []
+            if "TypeName" in closed.columns:
+                by_type = closed.groupby("TypeName")["_days"].agg(["mean", "count"]).reset_index()
+                by_type.columns = ["TypeName", "mean_days", "count"]
+                by_type["mean_days"] = by_type["mean_days"].round(1)
+                by_type = by_type.sort_values("mean_days", ascending=False).to_dict("records")
+            return {"mean_days": mean_d, "median_days": median_d,
+                    "closed_count": len(closed), "open_avg_days": 0, "by_type": by_type}
+
+    # No closed incidents found
+    return {"mean_days": 0, "median_days": 0, "closed_count": 0,
+            "open_avg_days": 0, "by_type": []}
+
+
 # --------------------------------------------------------------------------- #
 # Equipment
 # --------------------------------------------------------------------------- #
@@ -683,6 +762,75 @@ def bbso_rir_counts(forms: pd.DataFrame) -> dict[str, Any]:
         "bbso_contributors": len(bbso_by_worker),
         "rir_contributors": len(rir_by_worker),
     }
+
+
+def bbso_incident_ratio(forms: pd.DataFrame, incidents: pd.DataFrame) -> dict[str, Any]:
+    """BBSO-to-Incident ratio — a key leading indicator.
+
+    A high BBSO-to-incident ratio (>5:1) indicates strong proactive safety culture.
+    A low ratio (<2:1) suggests under-reporting or weak observation program.
+    Trend this over time — a rising ratio means prevention is working.
+    """
+    bbso = _filter_bbso(forms)
+    total_bbso = len(bbso)
+    total_incidents = len(incidents)
+    ratio = round(total_bbso / total_incidents, 1) if total_incidents else 0.0
+
+    # Monthly trend of the ratio
+    def _monthly_counts(df, date_col="CreatedOn"):
+        if df.empty or date_col not in df.columns:
+            return {}
+        d = df.dropna(subset=[date_col]).copy()
+        d["_m"] = pd.to_datetime(d[date_col]).dt.to_period("M")
+        return d.groupby("_m").size().to_dict()
+
+    bbso_by_month = _monthly_counts(bbso)
+    inc_by_month = _monthly_counts(incidents)
+
+    months = sorted(set(list(bbso_by_month.keys()) + list(inc_by_month.keys())))
+    trend = []
+    for m in months:
+        b = bbso_by_month.get(m, 0)
+        i = inc_by_month.get(m, 0)
+        r = round(b / i, 1) if i else (b if b else 0)
+        trend.append({"month": str(m), "bbso": b, "incidents": i, "ratio": r})
+
+    return {"ratio": ratio, "total_bbso": total_bbso,
+            "total_incidents": total_incidents, "monthly_trend": trend}
+
+
+def rir_incident_ratio(forms: pd.DataFrame, incidents: pd.DataFrame) -> dict[str, Any]:
+    """RIR-to-Incident ratio — the reporting culture index.
+
+    A high RIR-to-incident ratio (>5:1) indicates strong near-miss reporting culture.
+    A low ratio (<2:1) suggests under-reporting — incidents happen without
+    being preceded by near-miss reports.
+    """
+    rir = _filter_rir(forms)
+    total_rir = len(rir)
+    total_incidents = len(incidents)
+    ratio = round(total_rir / total_incidents, 1) if total_incidents else 0.0
+
+    def _monthly_counts(df, date_col="CreatedOn"):
+        if df.empty or date_col not in df.columns:
+            return {}
+        d = df.dropna(subset=[date_col]).copy()
+        d["_m"] = pd.to_datetime(d[date_col]).dt.to_period("M")
+        return d.groupby("_m").size().to_dict()
+
+    rir_by_month = _monthly_counts(rir)
+    inc_by_month = _monthly_counts(incidents)
+
+    months = sorted(set(list(rir_by_month.keys()) + list(inc_by_month.keys())))
+    trend = []
+    for m in months:
+        r = rir_by_month.get(m, 0)
+        i = inc_by_month.get(m, 0)
+        ratio_m = round(r / i, 1) if i else (r if r else 0)
+        trend.append({"month": str(m), "rir": r, "incidents": i, "ratio": ratio_m})
+
+    return {"ratio": ratio, "total_rir": total_rir,
+            "total_incidents": total_incidents, "monthly_trend": trend}
 
 
 def bbso_monthly_trend(forms: pd.DataFrame) -> pd.DataFrame:

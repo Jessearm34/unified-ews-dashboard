@@ -40,3 +40,38 @@ def _rgba(h: str, a: float) -> str:
 
 def empty(msg: str = "No data for this period"):
     return Div(msg, cls="chart-empty")
+
+
+# ── Period-over-period delta helpers ───────────────────────────────────
+
+
+def previous_range(range_key: str, start: date, end: date) -> tuple[date, date]:
+    """Return the previous equivalent time range for comparison.
+
+    For "ytd": previous year YTD
+    For "30d"/"90d": shift both dates back by the same duration
+    For "lm": two months ago (previous complete month)
+    For "ly": the year before last year
+    For "all"/default: same range (no delta possible)
+    """
+    duration = (end - start).days
+    if range_key == "ytd":
+        # Compare to same period last year
+        return date(start.year - 1, start.month, start.day), date(end.year - 1, end.month, end.day)
+    if range_key == "lm":
+        lm_end = date(start.year, start.month, 1) - timedelta(days=1)
+        lm_start = date(lm_end.year, lm_end.month, 1)
+        return lm_start, lm_end
+    if range_key in ("30d", "90d"):
+        return start - timedelta(days=duration), end - timedelta(days=duration)
+    if range_key == "ly":
+        return date(start.year - 2, 1, 1), date(start.year - 2, 12, 31)
+    # For "all" and custom, same range (no real comparison)
+    return start, end
+
+
+def compute_delta(current: float, previous: float) -> float | None:
+    """Return the percentage change ((current - previous) / previous * 100)."""
+    if previous == 0:
+        return None
+    return round((current - previous) / previous * 100, 1)

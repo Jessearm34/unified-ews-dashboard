@@ -15,6 +15,7 @@
 	let range = $state('ytd');
 	let autoRefresh = $state(true);
 	let refreshInterval = $state(null);
+	let compare = $state(false);
 
 	const rangePresets = [['ytd','YTD'],['lm','Last month'],['30d','30d'],['90d','90d'],['ly','Last year'],['all','All']];
 
@@ -22,7 +23,7 @@
 		if (!silent) isLoading = true;
 		errMsg = null;
 		try {
-			const result = await fetchOverview(rangeKey);
+			const result = await fetchOverview(rangeKey, compare);
 			if (result.redirect) {
 				goto(result.redirect);
 				return;
@@ -43,6 +44,11 @@
 	function onRangeChange(key) {
 		range = key;
 		load(key);
+	}
+
+	function toggleCompare() {
+		compare = !compare;
+		load(range);
 	}
 
 	onMount(() => {
@@ -75,6 +81,12 @@
 
 <RangeControl presets={rangePresets} {range} onChange={onRangeChange} />
 
+<div class="controls" style="margin-top:0">
+	<button class="preset" class:active={compare} onclick={toggleCompare}>
+		{compare ? '◉' : '○'} Compare
+	</button>
+</div>
+
 {#if isLoading}
 	<div class="loading"><span class="spinner"></span> Loading dashboard data...</div>
 {:else if errMsg}
@@ -82,22 +94,22 @@
 {:else if data}
 	<!-- KPI Groups -->
 	{#if data.kpis?.length}
-		{#if data.has_more?.qb}
+		{#if data.kpis.filter(k => k.platform === 'QB').length}
 			<div class="kpi-group">
 				<div class="kpi-group-title">QuickBooks <span class="line"></span></div>
 				<div class="kpis">
 					{#each data.kpis.filter(k => k.platform === 'QB') as kpi (kpi.label)}
-						<KPICard {...kpi} />
+						<KPICard {...kpi} deltaUpGood={kpi.delta_up_good ?? true} />
 					{/each}
 				</div>
 			</div>
 		{/if}
-		{#if data.has_more?.sd}
+		{#if data.kpis.filter(k => k.platform === 'SD').length}
 			<div class="kpi-group">
 				<div class="kpi-group-title">SiteDocs <span class="line"></span></div>
 				<div class="kpis">
 					{#each data.kpis.filter(k => k.platform === 'SD') as kpi (kpi.label)}
-						<KPICard {...kpi} />
+						<KPICard {...kpi} deltaUpGood={kpi.delta_up_good ?? true} />
 					{/each}
 				</div>
 			</div>

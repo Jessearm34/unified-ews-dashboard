@@ -45,6 +45,35 @@ def render(fig: go.Figure) -> str:
                        default_width="100%")
 
 
+def overlay_compare(fig: go.Figure, compare_df: pd.DataFrame,
+                    color: str = "#94a3b8", name: str = "Last year",
+                    hovertemplate: str | None = None) -> go.Figure:
+    """Add a dashed line trace to a monthly trend figure from a comparison DataFrame.
+
+    ``compare_df`` must have columns ``Month`` (datetime) and ``Count`` (int).
+    Shifts the compare data to align months regardless of year.
+    """
+    if compare_df.empty or "Month" not in compare_df.columns:
+        return fig
+    cdf = compare_df.copy()
+    cdf["Month"] = pd.to_datetime(cdf["Month"])
+    cdf["Month"] = cdf["Month"].apply(
+        lambda d: d.replace(year=2026)  # align to current year for overlay
+    )
+    ht = hovertemplate or f"%{{x|%b}} {name}<br>%{{y}}<extra></extra>"
+    fig.add_trace(go.Scatter(
+        x=cdf["Month"], y=cdf["Count"],
+        mode="lines+markers",
+        line=dict(color=color, width=2, dash="dash"),
+        marker=dict(size=5, color=color),
+        name=name,
+        hovertemplate=ht,
+    ))
+    fig.update_layout(showlegend=True,
+                      legend=dict(orientation="h", y=1.12, x=0, font=dict(size=9)))
+    return fig
+
+
 def empty(message: str = "No data for this period") -> str:
     return f"<div class='chart-empty'>{message}</div>"
 
@@ -195,13 +224,18 @@ def form_types_chart(formtypes: pd.DataFrame, forms: pd.DataFrame) -> str:
     return render(_layout(fig, max(260, 28 * len(top))))
 
 
-def forms_trend(forms: pd.DataFrame) -> str:
+def forms_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) -> str:
     """Monthly forms — vertical bar chart with clean labels. Click a bar to see forms."""
     df = D.forms_monthly_trend(forms)
     if df.empty:
         return empty("No form submission data")
     df["Label"] = df["Month"].dt.strftime("%b")
-    max_val = df["Count"].max() if not df.empty else 1
+    max_val = max(df["Count"].max() if not df.empty else 1, 1)
+    cdf = None
+    if compare_forms is not None:
+        cdf = D.forms_monthly_trend(compare_forms)
+        if cdf is not None and not cdf.empty:
+            max_val = max(max_val, cdf["Count"].max())
     months_iso = df["Month"].dt.strftime("%Y-%m").tolist()
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
@@ -213,6 +247,9 @@ def forms_trend(forms: pd.DataFrame) -> str:
     fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
                      range=[0, max_val * 1.25])
     fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
+    if cdf is not None and not cdf.empty:
+        fig = overlay_compare(fig, cdf, color=ACCENT, name="Last year",
+                              hovertemplate="%{x|%b} Last year<br>%{y} forms<extra></extra>")
     html = render(_layout(fig, 300))
     div_id = html.split('id="')[1].split('"')[0] if 'id="' in html else "plot-0"
     click_js = '<script>'
@@ -321,15 +358,66 @@ def form_category_chart(forms: pd.DataFrame) -> str:
     return render(_layout(fig, 280))
 
 
+# ── BBSO Risk Heatmap ──────────────────────────────────────────────────────
+
+
+def bbso_risk_heatmap(forms: pd.DataFrame, responses: pd.DataFrame) -> str:
+    """Horizontal bar: Safe% per BBSO observation category (PPE, LOF, etc.).
+
+    Uses form_responses data — falls back to empty if not available.
+    Categories with low Safe% = where incidents are likely to happen next.
+    """
+    if responses.empty:
+        return empty("No BBSO form response data — can't compute risk categories")
+    df = D.bbso_at_risk_by_category(responses)
+    if df.empty:
+        return empty("No categorized BBSO data yet")
+    df = df.sort_values("SafePct", ascending=True).tail(10)
+    if df.empty:
+        return empty()
+
+    colors = []
+    for pct in df["SafePct"]:
+        if pct >= 90:
+            colors.append("#16a34a")  # green
+        elif pct >= 75:
+            colors.append("#eab308")  # yellow
+        elif pct >= 60:
+            colors.append("#ea580c")  # orange
+        else:
+            colors.append("#dc2626")  # red
+
+    fig = go.Figure(go.Bar(
+        x=df["SafePct"], y=df["Category"], orientation="h",
+        marker=dict(color=colors, line=dict(width=0)),
+        hovertemplate="%{y}<br>%{x:.1f}% Safe (%{customdata[0]} obs, %{customdata[1]} at-risk)<extra></extra>",
+        customdata=df[["Total", "AtRisk"]].values,
+        text=df["SafePct"].apply(lambda v: f"{v:.0f}%"),
+        textposition="outside", textfont=dict(size=11, color="#0f172a")))
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(range=[0, 105], gridcolor="#e2e8f0", title=None,
+                     tickfont=dict(size=10))
+    fig.update_yaxes(title=None, autorange="reversed")
+    fig.add_vline(x=90, line=dict(color="#16a34a", width=1, dash="dash"))
+    fig.add_vline(x=75, line=dict(color="#eab308", width=1, dash="dash"))
+    fig.add_vline(x=60, line=dict(color="#ea580c", width=1, dash="dash"))
+    return render(_layout(fig, max(260, 30 * len(df))))
+
+
 # ── BBSO & RIR Charts ───────────────────────────────────────────────────────
 
 
-def bbso_trend(forms: pd.DataFrame) -> str:
+def bbso_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) -> str:
     df = D.bbso_monthly_trend(forms)
     if df.empty:
         return empty("No BBSO data yet")
     df["Label"] = df["Month"].dt.strftime("%b")
-    max_val = df["Count"].max() if not df.empty else 1
+    max_val = max(df["Count"].max() if not df.empty else 1, 1)
+    cdf = None
+    if compare_forms is not None:
+        cdf = D.bbso_monthly_trend(compare_forms)
+        if cdf is not None and not cdf.empty:
+            max_val = max(max_val, cdf["Count"].max())
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
         marker=dict(color="#7c3aed", line=dict(width=0)),
@@ -339,15 +427,23 @@ def bbso_trend(forms: pd.DataFrame) -> str:
     fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
                      range=[0, max_val * 1.25])
     fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
+    if cdf is not None and not cdf.empty:
+        fig = overlay_compare(fig, cdf, color="#7c3aed", name="Last year",
+                              hovertemplate="%{x|%b} Last year<br>%{y} BBSOs<extra></extra>")
     return render(_layout(fig, 260))
 
 
-def rir_trend(forms: pd.DataFrame) -> str:
+def rir_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) -> str:
     df = D.rir_monthly_trend(forms)
     if df.empty:
         return empty("No RIR data yet")
     df["Label"] = df["Month"].dt.strftime("%b")
-    max_val = df["Count"].max() if not df.empty else 1
+    max_val = max(df["Count"].max() if not df.empty else 1, 1)
+    cdf = None
+    if compare_forms is not None:
+        cdf = D.rir_monthly_trend(compare_forms)
+        if cdf is not None and not cdf.empty:
+            max_val = max(max_val, cdf["Count"].max())
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
         marker=dict(color="#ea580c", line=dict(width=0)),
@@ -357,6 +453,9 @@ def rir_trend(forms: pd.DataFrame) -> str:
     fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
                      range=[0, max_val * 1.25])
     fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
+    if cdf is not None and not cdf.empty:
+        fig = overlay_compare(fig, cdf, color="#ea580c", name="Last year",
+                              hovertemplate="%{x|%b} Last year<br>%{y} RIRs<extra></extra>")
     return render(_layout(fig, 260))
 
 

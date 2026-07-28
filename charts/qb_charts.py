@@ -65,7 +65,7 @@ def empty(message: str = "No data for this range") -> str:
 # --------------------------------------------------------------------------- #
 
 
-def trend(invoices: pd.DataFrame, metric: str) -> str:
+def trend(invoices: pd.DataFrame, metric: str, compare_invoices: pd.DataFrame | None = None) -> str:
     _, _, ylabel, color = D.TREND_SPECS[metric]
     df = D.trend_series(invoices, metric)
     if df.empty:
@@ -83,7 +83,20 @@ def trend(invoices: pd.DataFrame, metric: str) -> str:
             hovertemplate=f"%{{x|%b %Y}}<br>{hover_fmt}<extra></extra>",
         )
     )
-    fig.update_layout(showlegend=False)
+    # Overlay comparison (last year / previous period)
+    if compare_invoices is not None and not compare_invoices.empty:
+        cdf = D.trend_series(compare_invoices, metric)
+        if not cdf.empty and len(cdf) > 0:
+            fig.add_trace(go.Scatter(
+                x=cdf["Month"], y=cdf["value"],
+                mode="lines+markers",
+                line=dict(color="#94a3b8", width=2, dash="dash"),
+                marker=dict(size=5, color="#94a3b8"),
+                name="Prev period",
+                hovertemplate=f"%{{x|%b %Y}}<br>{hover_fmt}<extra></extra>",
+            ))
+    fig.update_layout(showlegend=compare_invoices is not None and not compare_invoices.empty,
+                      legend=dict(orientation="h", y=1.1, font=dict(size=9)))
     fig.update_yaxes(title=ylabel, gridcolor="#e2e8f0")
     fig.update_xaxes(title=None, gridcolor="#f1f5f9", dtick="M1", tickformat="%b %Y")
     return render(_layout(fig, 320))

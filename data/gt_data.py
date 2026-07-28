@@ -160,6 +160,44 @@ def idling_summary(since: datetime | None = None, until: datetime | None = None)
     }
 
 
+def idling_cost(since: datetime | None = None, until: datetime | None = None,
+                cost_per_hour: float = 5.0) -> dict[str, Any]:
+    """Compute idle time converted to estimated fuel + maintenance cost.
+
+    Default $5/hr assumes ~1 gal/hr fuel burn at $3.50/gal plus $1.50 engine wear.
+    Adjust cost_per_hour based on fleet composition and local fuel prices.
+
+    Returns:
+        {"total_idle_hours": float, "estimated_cost": float,
+         "cost_per_hour": float, "top_vehicles": [...], "savings_target": float}
+    """
+    summary = idling_summary(since, until)
+    total_hours = summary["total_idle_hours"]
+    estimated_cost = round(total_hours * cost_per_hour, 2)
+
+    # Top 5 idling vehicles with their cost contribution
+    top = []
+    for v in summary.get("vehicles", [])[:5]:
+        hrs = round(v["idle_seconds"] / 3600, 2)
+        top.append({
+            "label": v["label"],
+            "idle_hours": hrs,
+            "estimated_cost": round(hrs * cost_per_hour, 2),
+            "idle_pct": v["idle_pct"],
+        })
+
+    # Savings target: if we reduce idle by 20%
+    savings_target = round(estimated_cost * 0.20, 2)
+
+    return {
+        "total_idle_hours": total_hours,
+        "estimated_cost": estimated_cost,
+        "cost_per_hour": cost_per_hour,
+        "top_vehicles": top,
+        "savings_target": savings_target,
+    }
+
+
 def speed_analysis(since: datetime | None = None, until: datetime | None = None) -> dict[str, Any]:
     if since is None:
         since = datetime.now(timezone.utc) - timedelta(days=365)

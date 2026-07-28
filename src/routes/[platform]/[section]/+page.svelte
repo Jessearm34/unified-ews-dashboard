@@ -24,6 +24,7 @@
 
 	let range = $state('all');
 	let basis = $state('accrual');
+	let compare = $state(false);
 
 	async function load() {
 		isLoading = true;
@@ -41,7 +42,7 @@
 			if (plat === 'qb') {
 				result = await fetchQB(sec, { basis, range });
 			} else if (plat === 'sd') {
-				result = await fetchSD(sec);
+				result = await fetchSD(sec, compare);
 			} else if (plat === 'gt') {
 				result = await fetchGT(sec, range);
 			} else {
@@ -62,6 +63,11 @@
 
 	function onRangeChange(key) {
 		range = key;
+		load();
+	}
+
+	function toggleCompare() {
+		compare = !compare;
 		load();
 	}
 
@@ -113,6 +119,14 @@
 	<RangeControl presets={rangePresets} {range} onChange={onRangeChange} />
 {/if}
 
+{#if currentPlatform === 'sd'}
+	<div class="controls" style="margin-top:0">
+		<button class="preset" class:active={compare} onclick={toggleCompare}>
+			{compare ? '◉' : '○'} Compare
+		</button>
+	</div>
+{/if}
+
 {#if isLoading}
 	<div class="loading"><span class="spinner"></span> Loading...</div>
 {:else if errMsg}
@@ -122,7 +136,7 @@
 	{#if data.kpis?.length}
 		<div class="kpis">
 			{#each data.kpis as kpi (kpi.label)}
-				<KPICard {...kpi} />
+				<KPICard {...kpi} deltaUpGood={kpi.delta_up_good ?? true} />
 			{/each}
 		</div>
 	{/if}

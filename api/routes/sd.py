@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pandas as pd
 from fastapi import APIRouter, Query
 
 from api.cache import cached
@@ -25,7 +26,8 @@ def _kpi_dict(label, value, unit="", hint="", rag=None, platform="SD", delta=Non
 
 
 @router.get("/_api/sd/{section}")
-async def sd_section(section: str = "hse"):
+async def sd_section(section: str = "hse",
+                     compare: bool = Query(False, description="Show year-over-year overlay on trend charts")):
     ds = cached("sd", _load_sd)
     if not ds:
         return {"kpis": [], "charts": {}, "loaded_at": datetime.now(timezone.utc).isoformat(), "has_more": {}}
@@ -33,11 +35,31 @@ async def sd_section(section: str = "hse"):
     has_qb = bool(cached("qb", lambda: None))
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    # Compute compare_forms if requested (last year same months)
+    compare_forms = None
+    if compare and not ds.forms.empty:
+        try:
+            from datetime import timedelta
+            date_col = "CreatedOn" if "CreatedOn" in ds.forms.columns else "createdOn"
+            if date_col in ds.forms.columns:
+                forms_dates = pd.to_datetime(ds.forms[date_col], errors="coerce")
+                latest = forms_dates.max()
+                if pd.notna(latest):
+                    prev_start = latest - timedelta(days=365)
+                    prev_end = latest - timedelta(days=1)
+                    mask = (forms_dates >= prev_start) & (forms_dates <= prev_end)
+                    compare_forms = ds.forms[mask].copy()
+        except Exception:
+            pass
+
     if section == "hse":
         sched_c = SD.schedule_counts(ds.schedules)
         f_count = SD.form_counts(ds.forms)
         part = SD.worker_participation(ds.workers, ds.forms)
         brc = SD.bbso_rir_counts(ds.forms)
+        bir = SD.bbso_incident_ratio(ds.forms, ds.incidents)
+        rir_ratio = SD.rir_incident_ratio(ds.forms, ds.incidents)
+        close_time = SD.incident_close_time(ds.incidents)
 
         def _rag_for_value(v, green, amber, good_when_high=True):
             if good_when_high:
@@ -60,14 +82,24 @@ async def sd_section(section: str = "hse"):
                       hint=f"{brc['rir_this_month']} this month · {brc['rir_contributors']} reporters"),
             _kpi_dict("Worker Participation", part["pct"], "%",
                       rag=_rag_for_value(part["pct"], 80, 60)),
+            _kpi_dict("BBSO:Incident Ratio", float(bir["ratio"]), ":1",
+                      hint=f"{bir['total_bbso']} BBSO · {bir['total_incidents']} incidents",
+                      rag=_rag_for_value(bir["ratio"], 5, 2)),
+            _kpi_dict("Reporting Culture Index", float(rir_ratio["ratio"]), ":1",
+                      hint=f"{rir_ratio['total_rir']} RIRs · {rir_ratio['total_incidents']} incidents",
+                      rag=_rag_for_value(rir_ratio["ratio"], 5, 2)),
+            _kpi_dict("Avg Incident Close Time", float(close_time["mean_days"]), "days",
+                      hint=f"median {close_time['median_days']}d · {close_time['closed_count']} closed",
+                      rag=_rag_for_value(close_time["mean_days"], 14, 30, False)),
         ]
 
         charts = {
             "safety_profile": {"html": SDC.safety_profile_table(ds.workers, ds.forms), "title": "Safety Profile"},
             "observer_leaderboard": {"html": SDC.observer_leaderboard_table(ds.workers, ds.forms), "title": "Top BBSO Observers"},
             "reporter_leaderboard": {"html": SDC.reporter_leaderboard_table(ds.workers, ds.forms), "title": "Top RIR Reporters"},
-            "bbso_trend": {"html": SDC.bbso_trend(ds.forms), "title": "Monthly BBSO Trend"},
-            "rir_trend": {"html": SDC.rir_trend(ds.forms), "title": "Monthly RIR Trend"},
+            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly BBSO Trend"},
+            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly RIR Trend"},
+            "bbso_risk_heatmap": {"html": SDC.bbso_risk_heatmap(ds.forms, ds.form_responses), "title": "BBSO Risk by Category"},
             "schedule_compliance": {"html": SDC.schedule_compliance(ds.schedules), "title": "Schedule Compliance"},
             "form_category": {"html": SDC.form_category_chart(ds.forms), "title": "Forms by Category"},
         }
@@ -89,9 +121,9 @@ async def sd_section(section: str = "hse"):
         ]
         charts = {
             "form_category": {"html": SDC.form_category_chart(ds.forms), "title": "Forms by Category"},
-            "forms_trend": {"html": SDC.forms_trend(ds.forms), "title": "Monthly Trend"},
-            "bbso_trend": {"html": SDC.bbso_trend(ds.forms), "title": "Monthly BBSO Trend"},
-            "rir_trend": {"html": SDC.rir_trend(ds.forms), "title": "Monthly RIR Trend"},
+            "forms_trend": {"html": SDC.forms_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly Trend"},
+            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly BBSO Trend"},
+            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly RIR Trend"},
             "form_types": {"html": SDC.form_types_chart(ds.formtypes, ds.forms), "title": "Forms by Type"},
         }
         return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
@@ -120,9 +152,9 @@ async def sd_section(section: str = "hse"):
         ]
         charts = {
             "schedule_compliance": {"html": SDC.schedule_compliance(ds.schedules), "title": "Schedule Compliance"},
-            "bbso_trend": {"html": SDC.bbso_trend(ds.forms), "title": "Monthly BBSO Trend"},
-            "rir_trend": {"html": SDC.rir_trend(ds.forms), "title": "Monthly RIR Trend"},
-            "forms_trend": {"html": SDC.forms_trend(ds.forms), "title": "Forms Trend"},
+            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly BBSO Trend"},
+            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly RIR Trend"},
+            "forms_trend": {"html": SDC.forms_trend(ds.forms, compare_forms=compare_forms), "title": "Forms Trend"},
             "leaderboard": {"html": SDC.bbso_rir_leaderboard_table(ds.workers, ds.forms), "title": "BBSO & RIR by Worker"},
             "overdue": {"html": SDC.overdue_items_list(ds.schedules), "title": "Overdue & Late Items"},
         }

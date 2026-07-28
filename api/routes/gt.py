@@ -35,14 +35,18 @@ def _fig_html(fig, height=350):
     return fig.to_html(include_plotlyjs=False, full_html=False, config=_PLOT_CONFIG)
 
 
-def _kpi_dict(label, value, hint=""):
+def _kpi_dict(label, value, hint="", unit=""):
     if value is None:
         val_str = "—"
     elif isinstance(value, float):
         val_str = f"{int(value):,}" if value == int(value) else f"{value:,.1f}"
-    else:
+    elif isinstance(value, int):
         val_str = f"{value:,}"
-    return {"label": label, "value": val_str, "unit": "", "hint": hint or "", "rag": None, "platform": "GT", "delta": None, "delta_up_good": True}
+    else:
+        val_str = str(value)
+    if unit == "$" and isinstance(value, (int, float)):
+        val_str = f"${val_str}"
+    return {"label": label, "value": val_str, "unit": unit, "hint": hint or "", "rag": None, "platform": "GT", "delta": None, "delta_up_good": True}
 
 
 def _load_gt():
@@ -96,6 +100,7 @@ def _gt_section_impl(section: str, range_key: str):
         tr = GT.daily_trends(since, until)
         ut = GT.vehicle_utilization(since, until)
         il = GT.idling_summary(since, until)
+        ic = GT.idling_cost(since, until)
 
         total_trips = sum(r.get("trips", 0) for r in tr) if tr else 0
         total_hrs = sum(u["hours_driven"] for u in ut) if ut else 0
@@ -105,6 +110,8 @@ def _gt_section_impl(section: str, range_key: str):
             _kpi_dict("Fleet Miles", s["total_fleet_miles"]),
             _kpi_dict("Total Trips", total_trips),
             _kpi_dict("Drive Hours", round(total_hrs)),
+            _kpi_dict("Idle Cost", round(ic['estimated_cost']), unit="$",
+                      hint=f"{ic['total_idle_hours']} hrs · ${ic['savings_target']:,.0f} savings target"),
         ]
 
         charts = {}

@@ -22,8 +22,10 @@ async function request(path, options = {}) {
 	return res.json();
 }
 
-export function fetchOverview(range = 'ytd') {
-	return request(`/_api/overview?range=${range}`);
+export function fetchOverview(range = 'ytd', compare = false) {
+	const params = new URLSearchParams({ range });
+	if (compare) params.set('compare', 'true');
+	return request(`/_api/overview?${params}`);
 }
 
 export function fetchQB(section, opts = {}) {
@@ -35,8 +37,11 @@ export function fetchQB(section, opts = {}) {
 	return request(`/_api/qb/${section}${qs ? '?' + qs : ''}`);
 }
 
-export function fetchSD(section) {
-	return request(`/_api/sd/${section}`);
+export function fetchSD(section, compare = false) {
+	const params = new URLSearchParams();
+	if (compare) params.set('compare', 'true');
+	const qs = params.toString();
+	return request(`/_api/sd/${section}${qs ? '?' + qs : ''}`);
 }
 
 export function fetchGT(section, range = 'all') {

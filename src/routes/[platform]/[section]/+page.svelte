@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { fetchQB, fetchSD, fetchGT } from '$lib/api.js';
-	import { platform, section } from '$lib/stores/dashboard.js';
+	import { platform, section, platforms } from '$lib/stores/dashboard.js';
 	import KPICard from '$lib/components/KPICard.svelte';
 	import Panel from '$lib/components/Panel.svelte';
 	import PlotlyChart from '$lib/components/PlotlyChart.svelte';
@@ -25,6 +25,15 @@
 	let range = $state('all');
 	let basis = $state('accrual');
 	let compare = $state(false);
+
+	// Resolve human-readable labels from the platforms registry
+	const sectionLabels = $derived(Object.fromEntries(
+		platforms.flatMap(p => p.sections.map(s => [`${p.key}/${s.key}`, s.label]))
+	));
+	const pageTitle = $derived(
+		sectionLabels[`${currentPlatform}/${currentSection}`] 
+		|| `${currentPlatform.toUpperCase()}: ${currentSection}`
+	);
 
 	async function load() {
 		isLoading = true;
@@ -88,11 +97,11 @@
 </script>
 
 <svelte:head>
-	<title>EWS — {currentPlatform.toUpperCase()} / {currentSection}</title>
+	<title>EWS — {pageTitle}</title>
 </svelte:head>
 
 <div class="header">
-	<h1>{currentPlatform.toUpperCase()}: {currentSection.replace('_', ' ')}</h1>
+	<h1>{pageTitle}</h1>
 	<div class="refreshed">
 		<span class="pill">
 			<span class="dot" class:stale={isLoading}></span>

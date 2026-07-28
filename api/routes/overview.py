@@ -245,24 +245,6 @@ def overview(range: str = Query("ytd", description="Date range key"),
     if sd_ds:
         kpis.extend(_sd_kpis(sd_ds))
 
-    # Unified Safety Score (cross-platform, shown as a special KPI)
-    try:
-        uss = ISS.unified_safety_score(sd_ds=sd_ds)
-        if uss["score"] > 0:
-            rag_safety = "green" if uss["score"] >= 80 else ("amber" if uss["score"] >= 60 else "red")
-            kpis.insert(0, {
-                "label": "Unified Safety Score",
-                "value": _fmt_val(uss["score"], "%"),
-                "unit": "",
-                "platform": "SD",
-                "hint": f"Participation {uss['components'].get('participation',0):.0f}% · Compliance {uss['components'].get('compliance',0):.0f}%",
-                "rag": rag_safety,
-                "delta": None,
-                "delta_up_good": True,
-            })
-    except Exception:
-        pass
-
     charts = {}
     charts.update(_qb_charts(qb_ds, start, end, compare=compare, prev_start=prev_start, prev_end=prev_end))
     charts.update(_sd_charts(sd_ds, compare=compare, prev_start=prev_start, prev_end=prev_end))

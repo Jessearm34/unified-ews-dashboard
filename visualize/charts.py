@@ -153,10 +153,13 @@ def form_types_chart(formtypes, forms): return SDC.form_types_chart(formtypes, f
 def issues_table(issues): return IC.issues_table(issues)
 
 
-# ── Additional QB Charts (from eww-dashboard-public) ──────────────
+# ── Additional QB Charts ──────────────────────────────────────────
 
 def dso_trend(inv, start, end): return QBC.dso_trend(inv, start, end)
 def revenue_by_customer_monthly(inv, start, end): return QBC.revenue_by_customer_monthly(inv, start, end)
 def class_period_ranking(inv, start, end): return QBC.class_period_ranking(inv, start, end)
 def location_period_ranking(inv, start, end): return QBC.location_period_ranking(inv, start, end)
+def pnl_waterfall(summary): return QBC.pnl_waterfall(summary)
+def pnl_trend(pnl, basis): return QBC.pnl_trend(pnl, basis)
+def pnl_expenses(pnl_detail, basis, start, end, n=10): return QBC.pnl_expenses(pnl_detail, basis, start, end, n)
 

@@ -188,6 +188,8 @@ def get_state(req) -> dict:
         "start": q.get("start", ""),
         "end": q.get("end", ""),
         "compare": q.get("compare", "0"),
+        "basis": q.get("basis", "accrual"),
+        "waterfall": q.get("waterfall", ""),
     }
 
 
@@ -688,11 +690,24 @@ def qb_finance_body(ds, inv, start, end, state):
 
 
 def qb_profitability_body(ds, inv, start, end, state):
-    pnl_sum = QB.pnl_summary(ds.pnl, "accrual", start, end)
-    if not pnl_sum or pnl_sum.get("income", 0) == 0:
-        return Div(panel("Profit & Loss", "No P&L data yet — data lands on next scheduled refresh", "#2563eb"), cls="grid mt")
+    basis = state.get("basis", "accrual")
+    summary = QB.pnl_summary(ds.pnl, basis, start, end)
+    if ds.pnl.empty or summary.get("income", 0) == 0:
+        return Div(basis_toggle(state),
+                   Div(panel("Profit & Loss", "No P&L data yet — data lands on next scheduled refresh", "#2563eb"), cls="grid mt"))
+
+    base_state = {k: v for k, v in state.items() if k != "waterfall"}
+    drill_url = "/view?" + urlencode(base_state)
     return Div(
-        Div(panel("Monthly P&L Trend", C.trend(inv, "revenue"), "#16a34a"), cls="grid mt"),
+        basis_toggle(state),
+        Div(panel("Profit & Loss Waterfall", NotStr(C.pnl_waterfall(summary)), "#2563eb"),
+            panel(f"Income Statement ({basis})", pnl_statement(summary), "#0e7490"),
+            cls="grid two mt"),
+        Div(id="waterfall-drilldown", cls="drilldown-content", style="margin:12px 0; min-height:48px;"),
+        Div(panel("Monthly P&L Trend", C.pnl_trend(ds.pnl, basis), "#16a34a"), cls="grid mt"),
+        Div(panel("Top Expenses", C.pnl_expenses(ds.pnl_detail, basis, start, end), "#dc2626"),
+            panel("Revenue by Class — Period Ranking", C.class_period_ranking(inv, start, end), "#16a34a"),
+            cls="grid even mt"),
     )
 
 
@@ -735,7 +750,51 @@ def invoice_table(invoices, limit=30):
     return Div(Table(Thead(head), Tbody(*rows), cls="data"), cls="tbl-wrap")
 
 
-# ── Section dispatch ────────────────────────────────────────────────
+# ── P&L Helpers ────────────────────────────────────────────────────
+
+def _signed_money(v):
+    v = float(v) if pd.notna(v) else 0.0
+    return f"-${abs(v):,.2f}" if v < 0 else f"${v:,.2f}"
+
+
+def pnl_statement(summary):
+    def row(label, value, *, total=False, pct=False, indent=False):
+        txt = f"{value:,.1f}%" if pct else _signed_money(value)
+        neg = (not pct and value < 0) or (pct and value < 0)
+        td_style = "font-weight:700;" if total else ""
+        if neg: td_style += "color: var(--bad);"
+        label_cell = Td(label, style=("padding-left:24px; color:var(--muted);" if indent else
+                                       ("font-weight:700;" if total else "")))
+        tr_style = "border-top:2px solid var(--line);" if total else ""
+        return Tr(label_cell, Td(txt, cls="num", style=td_style), style=tr_style)
+
+    s = summary
+    body = [
+        row("Income", s["income"]),
+        row("Cost of Goods Sold", -s["cogs"]),
+        row("Gross Profit", s["gross_profit"], total=True),
+        row("Gross Margin", s["gross_margin"], pct=True, indent=True),
+        row("Operating Expenses", -s["expenses"]),
+        row("Net Operating Income", s.get("net_operating_income", 0), total=True),
+        row("Other Income", s.get("other_income", 0)),
+        row("Other Expenses", -s.get("other_expenses", 0)),
+        row("Net Income", s["net_income"], total=True),
+        row("Net Margin", s["net_margin"], pct=True, indent=True),
+    ]
+    head = Tr(Th("Line item"), Th("Amount", cls="num"))
+    return Div(Table(Thead(head), Tbody(*body), cls="data"), cls="tbl-wrap")
+
+
+def basis_toggle(state):
+    btns = []
+    for key, label in [("accrual", "Accrual"), ("cash", "Cash")]:
+        active = "active" if state.get("basis", "accrual").lower() == key else ""
+        btns.append(Button(label, cls=f"preset {active}", hx_get=url(state, basis=key), **SWAP))
+    return Div(
+        Span("Accounting basis:", cls="lbl"), *btns,
+        Span("QuickBooks Profit & Loss — your books", cls="note", style="margin-left:10px;"),
+        cls="controls", style="margin-top:0;",
+    )
 
 PLATFORM_KPI_BUILDERS = {
     "qb": lambda ds, inv, start, end, state: [
@@ -906,7 +965,33 @@ def view(req):
     guard = require_login(req)
     if guard is not None:
         return guard
-    return app_shell(get_state(req))
+    state = get_state(req)
+    if state.get("waterfall"):
+        # HTMX drilldown fragment — only return the breakdown
+        qb_ds = D.load_qb_dataset()
+        start, end, _ = resolve_range(state, qb_ds)
+        summary = QB.pnl_summary(qb_ds.pnl, state.get("basis", "accrual"), start, end)
+        cat = state["waterfall"]
+        rows = []
+        if cat == "Income" and summary["income"] > 0:
+            rows.append(Tr(Td("Total Income"), Td(_signed_money(summary["income"]), cls="num")))
+        elif cat == "COGS" and summary["cogs"] > 0:
+            rows.append(Tr(Td("Total COGS"), Td(_signed_money(summary["cogs"]), cls="num")))
+        elif cat == "Operating Exp." and summary["expenses"] > 0:
+            rows.append(Tr(Td("Total Operating Expenses"), Td(_signed_money(summary["expenses"]), cls="num")))
+        elif cat == "Other Income" and summary.get("other_income", 0) != 0:
+            rows.append(Tr(Td("Total Other Income"), Td(_signed_money(summary.get("other_income", 0)), cls="num")))
+        elif cat == "Other Exp." and summary.get("other_expenses", 0) != 0:
+            rows.append(Tr(Td("Total Other Expenses"), Td(_signed_money(summary.get("other_expenses", 0)), cls="num")))
+        else:
+            rows.append(Tr(Td("No detail available"), Td("—")))
+        return Div(
+            H4(f"{cat} — Breakdown", style="margin:0 0 8px; font-size:13px;"),
+            Table(Thead(Tr(Th("Category"), Th("Amount", cls="num"))),
+                  Tbody(*rows), cls="data"),
+            cls="tbl-wrap",
+        )
+    return app_shell(state)
 
 
 def login_page(error: str | None = None, next_url: str = "/"):

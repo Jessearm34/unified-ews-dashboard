@@ -805,3 +805,148 @@ def pnl_kpis(ds: "QbDataset", basis: str, start: date, end: date) -> dict[str, K
         "pnl_net_margin": Kpi("pnl_net_margin", "Net Margin", s["net_margin"], None, "%", True,
                               hint="Net income ÷ income"),
     }
+
+
+# ── DSO Trend ──────────────────────────────────────────────────────
+
+
+def dso_trend_series(invoices: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+    """Monthly DSO values and prior-year DSO values for the window."""
+    cols = ["Month", "DSO", "DSO_PY"]
+    if invoices.empty:
+        return pd.DataFrame(columns=cols)
+    inv = invoices.copy()
+    inv["TxnDate_dt"] = inv["TxnDate"].dt.date
+    months = pd.date_range(start=start, end=end, freq="MS")
+    rows = []
+    for m in months:
+        m_start = m.date()
+        m_end = (m + pd.offsets.MonthEnd(0)).date()
+        mask = (inv["TxnDate_dt"] >= m_start) & (inv["TxnDate_dt"] <= m_end)
+        cur = inv[mask]
+        revenue = cur["Revenue"].sum()
+        if revenue <= 0:
+            continue
+        ar = cur.loc[cur["RevenueBalance"] > 0, "RevenueBalance"].sum()
+        days_in = (m_end - m_start).days + 1
+        dso_val = (ar / revenue) * days_in if days_in else None
+        py_start = m_start.replace(year=m_start.year - 1)
+        py_end = m_end.replace(year=m_end.year - 1)
+        py_mask = (inv["TxnDate_dt"] >= py_start) & (inv["TxnDate_dt"] <= py_end)
+        py = inv[py_mask]
+        py_revenue = py["Revenue"].sum()
+        py_dso_val = None
+        if py_revenue > 0:
+            py_ar = py.loc[py["RevenueBalance"] > 0, "RevenueBalance"].sum()
+            py_dso_val = (py_ar / py_revenue) * days_in if days_in else None
+        rows.append({"Month": m, "DSO": dso_val, "DSO_PY": py_dso_val})
+    return pd.DataFrame(rows)
+
+
+def customer_monthly_revenue(invoices: pd.DataFrame, start: date, end: date, top_n: int = 6) -> pd.DataFrame:
+    """Monthly revenue broken out by top N customers + Other."""
+    inv = invoices.copy()
+    inv["TxnDate_dt"] = inv["TxnDate"].dt.date
+    window_mask = (inv["TxnDate_dt"] >= start) & (inv["TxnDate_dt"] <= end)
+    totals = inv[window_mask].groupby("CustomerName")["Revenue"].sum().sort_values(ascending=False)
+    top_custs = totals.head(top_n).index.tolist()
+    months = pd.date_range(start=start, end=end, freq="MS")
+    rows = []
+    for m in months:
+        m_start = m.date()
+        m_end = (m + pd.offsets.MonthEnd(0)).date()
+        mask = (inv["TxnDate_dt"] >= m_start) & (inv["TxnDate_dt"] <= m_end)
+        cur = inv[mask]
+        if cur.empty:
+            continue
+        by_cust = cur.groupby("CustomerName")["Revenue"].sum()
+        row = {"Month": m}
+        for c in top_custs:
+            row[c] = by_cust.get(c, 0.0)
+        others = by_cust.loc[~by_cust.index.isin(top_custs)].sum()
+        row["Other"] = others if len(by_cust) > len(top_custs) else 0.0
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def class_monthly_revenue(invoices: pd.DataFrame, start: date, end: date, top_n: int = 5) -> pd.DataFrame:
+    """Monthly revenue broken out by top N classes + Other."""
+    inv = invoices.copy()
+    inv["TxnDate_dt"] = inv["TxnDate"].dt.date
+    window_mask = (inv["TxnDate_dt"] >= start) & (inv["TxnDate_dt"] <= end)
+    items = invoice_line_items(inv[window_mask])
+    if items.empty:
+        return pd.DataFrame()
+    totals = items.groupby("ClassName")["Amount"].sum().sort_values(ascending=False)
+    top_classes = totals.head(top_n).index.tolist()
+    months = pd.date_range(start=start, end=end, freq="MS")
+    rows = []
+    for m in months:
+        m_start = m.date()
+        m_end = (m + pd.offsets.MonthEnd(0)).date()
+        mask = (inv["TxnDate_dt"] >= m_start) & (inv["TxnDate_dt"] <= m_end)
+        cur = inv[mask]
+        if cur.empty:
+            continue
+        cur_items = invoice_line_items(cur)
+        if cur_items.empty:
+            continue
+        by_class = cur_items.groupby("ClassName")["Amount"].sum()
+        row = {"Month": m}
+        for c in top_classes:
+            row[c] = by_class.get(c, 0.0)
+        others = by_class.loc[~by_class.index.isin(top_classes)].sum()
+        row["Other"] = others if len(by_class) > len(top_classes) else 0.0
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def class_summary(invoices: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+    """Total revenue by class for the period, sorted descending."""
+    items = invoice_line_items(invoices)
+    if items.empty:
+        return pd.DataFrame(columns=["ClassName", "Amount", "Pct"])
+    g = items.groupby("ClassName", as_index=False)["Amount"].sum()
+    g = g[g["Amount"] != 0]
+    total = g["Amount"].sum()
+    if total == 0:
+        return pd.DataFrame(columns=["ClassName", "Amount", "Pct"])
+    g["Pct"] = g["Amount"] / total * 100
+    return g.sort_values("Amount", ascending=False).reset_index(drop=True)
+
+
+def location_monthly_revenue(invoices: pd.DataFrame, start: date, end: date, top_n: int = 5) -> pd.DataFrame:
+    """Monthly revenue broken out by top N cities + Other."""
+    inv = invoices.copy()
+    inv["TxnDate_dt"] = inv["TxnDate"].dt.date
+    window_mask = (inv["TxnDate_dt"] >= start) & (inv["TxnDate_dt"] <= end)
+    totals = inv[window_mask].groupby("City")["Revenue"].sum().sort_values(ascending=False)
+    top_cities = totals.head(top_n).index.tolist()
+    months = pd.date_range(start=start, end=end, freq="MS")
+    rows = []
+    for m in months:
+        m_start = m.date()
+        m_end = (m + pd.offsets.MonthEnd(0)).date()
+        mask = (inv["TxnDate_dt"] >= m_start) & (inv["TxnDate_dt"] <= m_end)
+        cur = inv[mask]
+        if cur.empty:
+            continue
+        by_city = cur.groupby("City")["Revenue"].sum()
+        row = {"Month": m}
+        for c in top_cities:
+            row[c] = by_city.get(c, 0.0)
+        others = by_city.loc[~by_city.index.isin(top_cities)].sum()
+        row["Other"] = others if len(by_city) > len(top_cities) else 0.0
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def location_summary(invoices: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+    """Revenue by city for the period with percentage."""
+    g = invoices.groupby("City", as_index=False)["Revenue"].sum()
+    g = g[g["Revenue"] > 0]
+    total = g["Revenue"].sum()
+    if total == 0:
+        return pd.DataFrame(columns=["City", "Revenue", "Pct"])
+    g["Pct"] = g["Revenue"] / total * 100
+    return g.sort_values("Revenue", ascending=False).reset_index(drop=True)

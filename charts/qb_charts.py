@@ -423,6 +423,105 @@ def accounts_by_type(accounts: pd.DataFrame) -> str:
     return render(_layout(fig, max(260, 30 * len(g))))
 
 
+# ── DSO Trend ─────────────────────────────────────────────────────
+
+
+def dso_trend(invoices: pd.DataFrame, start, end) -> str:
+    """Monthly DSO line chart with prior-year comparison overlay."""
+    df = D.dso_trend_series(invoices, start, end)
+    if df.empty:
+        return empty("No DSO data for this range")
+    fig = go.Figure()
+    fig.add_scatter(
+        x=df["Month"], y=df["DSO"], mode="lines+markers",
+        line=dict(color=ACCENT, width=3), marker=dict(size=7, color=ACCENT),
+        name="DSO",
+        hovertemplate="%{x|%b %Y}<br>DSO: %{y:.1f} days<extra></extra>",
+    )
+    py = df[df["DSO_PY"].notna()]
+    if not py.empty:
+        fig.add_scatter(
+            x=py["Month"], y=py["DSO_PY"], mode="lines+markers",
+            line=dict(color=_rgba(ACCENT, 0.4), width=2, dash="dot"),
+            marker=dict(size=6, color=_rgba(ACCENT, 0.4)),
+            name="DSO (prior year)",
+            hovertemplate="%{x|%b %Y}<br>DSO: %{y:.1f} days<extra></extra>",
+        )
+    fig.update_layout(showlegend=True, legend=dict(orientation="h", y=1.12, x=0))
+    fig.update_yaxes(title="Days", gridcolor="#e2e8f0")
+    fig.update_xaxes(title=None, gridcolor="#f1f5f9", tickformat="%b %Y")
+    return render(_layout(fig, 320))
+
+
+def revenue_by_customer_monthly(invoices: pd.DataFrame, start, end) -> str:
+    """Monthly revenue by top 3 customers + Other (thin focused trend)."""
+    df = D.customer_monthly_revenue(invoices, start, end, top_n=3)
+    if df.empty:
+        return empty("No customer revenue data for this range")
+    cols = [c for c in df.columns if c != "Month"]
+    fig = go.Figure()
+    colors = SEQ[:3] + ["#94a3b8"]
+    for i, col in enumerate(cols):
+        c = colors[i % len(colors)]
+        is_other = col == "Other"
+        fig.add_scatter(
+            x=df["Month"], y=df[col],
+            mode="lines+markers",
+            line=dict(color=c, width=(1.5 if is_other else 3)),
+            marker=dict(size=(5 if is_other else 8), color=c),
+            name=col,
+            hovertemplate="%{x|%b %Y}<br>%{customdata[0]}: $%{y:,.0f}<extra></extra>",
+        )
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(orientation="v", font=dict(size=10), x=1.05, y=0.5),
+        margin=dict(l=10, r=130, t=10, b=10),
+    )
+    fig.update_yaxes(title="Revenue", gridcolor="#e2e8f0")
+    fig.update_xaxes(title=None, gridcolor="#f1f5f9", tickformat="%b %Y")
+    return render(_layout(fig, 320))
+
+
+def class_period_ranking(invoices: pd.DataFrame, start, end) -> str:
+    """Ranked horizontal bar of class revenue for the period."""
+    df = D.class_summary(invoices, start, end)
+    if df.empty:
+        return empty("No class data for this range")
+    df = df.sort_values("Amount", ascending=True)
+    labels = df["ClassName"] + "  " + df["Pct"].map(lambda v: f"{v:.1f}%")
+    fig = go.Figure(
+        go.Bar(
+            x=df["Amount"], y=labels, orientation="h",
+            marker=dict(color=ACCENT),
+            hovertemplate="%{y}<br>$%{x:,.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title="Revenue", gridcolor="#e2e8f0")
+    fig.update_yaxes(title=None)
+    return render(_layout(fig, max(260, 34 * len(df))))
+
+
+def location_period_ranking(invoices: pd.DataFrame, start, end) -> str:
+    """Ranked horizontal bar of city revenue for the period."""
+    df = D.location_summary(invoices, start, end)
+    if df.empty:
+        return empty("No location data for this range")
+    df = df.sort_values("Revenue", ascending=True)
+    labels = df["City"] + "  " + df["Pct"].map(lambda v: f"{v:.1f}%")
+    fig = go.Figure(
+        go.Bar(
+            x=df["Revenue"], y=labels, orientation="h",
+            marker=dict(color="#0e7490"),
+            hovertemplate="%{y}<br>$%{x:,.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title="Revenue", gridcolor="#e2e8f0")
+    fig.update_yaxes(title=None)
+    return render(_layout(fig, max(260, 34 * len(df))))
+
+
 def accounts_by_classification(accounts: pd.DataFrame) -> str:
     g = (
         accounts.assign(absBal=accounts["CurrentBalance"].abs())

@@ -652,36 +652,45 @@ def gt_maintenance_body(since, until, state):
 def qb_overview_body(ds, inv, start, end, state):
     return Div(
         Div(panel("Monthly Revenue Trend", C.trend(inv, "revenue")),
-            panel("A/R Aging", C.ar_aging(inv), "#dc2626"), cls="grid two"),
-        Div(panel("Top Customers", C.top_customers(inv)),
-            panel("Revenue by Segment", C.revenue_by_class(inv), "#16a34a"),
+            panel("Revenue by Business Segment", C.revenue_by_class(inv), "#16a34a"),
+            cls="grid two"),
+        Div(panel("A/R Aging", C.ar_aging(inv), "#dc2626"),
+            panel("Top Customers (Period Ranking)", C.class_period_ranking(inv, start, end)),
             cls="grid even mt"),
     )
 
 
 def qb_sales_body(ds, inv, start, end, state):
-    items = QB.invoice_line_items(inv)
-    cust_panel = panel("Customers: current period", invoice_table(inv))
     return Div(
         Div(panel("Monthly Revenue", C.trend(inv, "revenue")),
-            panel("Revenue by Service/Product", C.revenue_by_item(inv) if not items.empty else C.empty("No item data")),
+            panel("Revenue by Service / Product", C.revenue_by_item(inv), "#0e7490"),
             cls="grid two"),
-        Div(cust_panel, cls="grid mt"),
+        Div(panel("Customers: Current Period Ranking", C.class_period_ranking(inv, start, end), "#7c3aed"),
+            panel("Customer Monthly Trend (Top 3)", C.revenue_by_customer_monthly(inv, start, end), "#7c3aed"),
+            cls="grid two mt"),
+        Div(panel("Revenue by Business Segment (Class)", C.revenue_by_class(inv), "#16a34a"),
+            panel("Revenue by Location (City)", C.location_period_ranking(inv, start, end), "#0891b2"),
+            cls="grid even mt"),
+        Div(panel("Invoices in Range", invoice_table(inv)), cls="grid mt"),
     )
 
 
 def qb_finance_body(ds, inv, start, end, state):
     return Div(
         Div(panel("Balance Sheet", C.balance_sheet(ds.accounts), "#0e7490"),
-            panel("A/R Aging", C.ar_aging(inv), "#dc2626"), cls="grid even"),
-        Div(panel("Assets by Type", C.accounts_by_type(ds.accounts), "#0e7490"),
-            panel("Invoice Balance Status", C.balance_status(inv), "#16a34a"),
+            panel("A/R Aging", C.ar_aging(inv), "#dc2626"),
+            cls="grid even"),
+        Div(panel("Monthly DSO Trend", C.dso_trend(inv, start, end), "#2563eb"), cls="grid mt"),
+        Div(panel("Invoice Balance Status", C.balance_status(inv), "#16a34a"),
+            panel("Assets by Type", C.accounts_by_type(ds.accounts), "#0e7490"),
             cls="grid even mt"),
     )
 
 
 def qb_profitability_body(ds, inv, start, end, state):
-    pnl = QB.pnl_summary(ds.pnl, "accrual", start, end)
+    pnl_sum = QB.pnl_summary(ds.pnl, "accrual", start, end)
+    if not pnl_sum or pnl_sum.get("income", 0) == 0:
+        return Div(panel("Profit & Loss", "No P&L data yet — data lands on next scheduled refresh", "#2563eb"), cls="grid mt")
     return Div(
         Div(panel("Monthly P&L Trend", C.trend(inv, "revenue"), "#16a34a"), cls="grid mt"),
     )
@@ -689,8 +698,9 @@ def qb_profitability_body(ds, inv, start, end, state):
 
 def qb_customers_body(ds, inv, start, end, state):
     return Div(
-        Div(panel("Top Customers", C.top_customers(inv)),
-            cls="grid mt"),
+        Div(panel("Current Period Ranking", C.class_period_ranking(inv, start, end)),
+            panel("Monthly Trend (Top 3)", C.revenue_by_customer_monthly(inv, start, end), "#7c3aed"),
+            cls="grid two"),
     )
 
 

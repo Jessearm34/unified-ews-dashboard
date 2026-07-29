@@ -26,14 +26,17 @@
 	let basis = $state('accrual');
 	let compare = $state(false);
 
-	// Resolve human-readable labels from the platforms registry
-	const sectionLabels = $derived(Object.fromEntries(
-		platforms.flatMap(p => p.sections.map(s => [`${p.key}/${s.key}`, s.label]))
-	));
-	const pageTitle = $derived(
-		sectionLabels[`${currentPlatform}/${currentSection}`] 
-		|| `${currentPlatform.toUpperCase()}: ${currentSection}`
-	);
+	// Resolve human-readable page title from the platforms registry
+	const pageTitle = $derived(() => {
+		for (const p of platforms) {
+			if (p.key === currentPlatform) {
+				for (const s of p.sections) {
+					if (s.key === currentSection) return s.label;
+				}
+			}
+		}
+		return `${currentPlatform.toUpperCase()}: ${currentSection}`;
+	});
 
 	async function load() {
 		isLoading = true;

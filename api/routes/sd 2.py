@@ -11,13 +11,6 @@ from api.cache import cached
 from data import sd_data as SD
 from charts import sd_charts as SDC
 
-# Houston timezone
-try:
-    from zoneinfo import ZoneInfo
-    _HOUSTON = ZoneInfo("America/Chicago")
-except Exception:
-    _HOUSTON = timezone.utc
-
 router = APIRouter()
 
 def _load_sd():
@@ -37,10 +30,10 @@ async def sd_section(section: str = "hse",
                      compare: bool = Query(False, description="Show year-over-year overlay on trend charts")):
     ds = cached("sd", _load_sd)
     if not ds:
-        return {"kpis": [], "charts": {}, "loaded_at": datetime.now(_HOUSTON).isoformat(), "has_more": {}}
+        return {"kpis": [], "charts": {}, "loaded_at": datetime.now(timezone.utc).isoformat(), "has_more": {}}
 
     has_qb = bool(cached("qb", lambda: None))
-    now_iso = datetime.now(_HOUSTON).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
 
     # Compute compare_forms if requested (last year same months)
     compare_forms = None

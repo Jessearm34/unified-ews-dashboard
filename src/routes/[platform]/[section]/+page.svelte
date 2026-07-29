@@ -133,6 +133,10 @@
 	</div>
 {/if}
 
+{#if data?.range_info}
+	<div class="note" style="margin-bottom:14px">Showing {data.range_info}</div>
+{/if}
+
 {#if isLoading}
 	<div class="loading"><span class="spinner"></span> Loading...</div>
 {:else if errMsg}

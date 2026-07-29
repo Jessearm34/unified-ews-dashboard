@@ -14,6 +14,13 @@ from api.cache import cached
 from api.utils import resolve_date_range, _rgba, empty as _empty_html
 from data import gt_data as GT
 
+# Houston timezone
+try:
+    from zoneinfo import ZoneInfo
+    _HOUSTON = ZoneInfo("America/Chicago")
+except Exception:
+    _HOUSTON = timezone.utc
+
 router = APIRouter()
 
 ACCENT = "#2563eb"
@@ -81,7 +88,7 @@ async def gt_section(section: str = "fleet", range: str = Query(default="all")):
         return {
             "kpis": [],
             "charts": {},
-            "loaded_at": datetime.now(timezone.utc).isoformat(),
+            "loaded_at": datetime.now(_HOUSTON).isoformat(),
             "has_more": {},
             "error": f"Internal error in GT/{section}: {e}",
             "traceback": tb[-500:],  # last 500 chars
@@ -92,7 +99,7 @@ def _gt_section_impl(section: str, range_key: str):
     start, end = resolve_date_range(range_key)
     since = datetime.combine(start, datetime.min.time()).replace(tzinfo=timezone.utc)
     until = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(_HOUSTON).isoformat()
     I = ACCENT
 
     if section == "fleet":
@@ -233,7 +240,8 @@ def _gt_section_impl(section: str, range_key: str):
             sd_table = f"<div class='tbl-wrap' style='max-height:400px'><table class='data'><thead><tr><th>Driver</th><th class='num'>Trips</th><th class='num'>Seatbelt</th><th class='num'>After-Hrs</th><th class='num'>Idle</th><th class='num'>Speeding</th><th class='num'>Score</th></tr></thead><tbody>{trs}</tbody></table></div>"
             charts["safety_table"] = {"html": sd_table, "title": "Safety Details"}
 
-        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
+        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {},
+                "range_info": f"{range_key.upper()} · {start.strftime('%b %d')} – {end.strftime('%b %d, %Y')}"}
 
     elif section == "maintenance":
         mt = GT.vehicle_maintenance_status(since, until)
@@ -265,6 +273,7 @@ def _gt_section_impl(section: str, range_key: str):
             f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Occurrences"))
             charts["faults"] = {"html": _fig_html(f, 300), "title": "Fault Frequency"}
 
-        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
+        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {},
+                "range_info": f"{range_key.upper()} · {start.strftime('%b %d')} – {end.strftime('%b %d, %Y')}"}
 
     return {"kpis": [], "charts": {}, "loaded_at": now_iso, "has_more": {}}

@@ -7,8 +7,8 @@ export default {
 	kit: {
 		adapter: adapter({
 			fallback: 'index.html',
-			pages: 'build',
-			assets: 'build'
+			pages: 'static',
+			assets: 'static'
 		})
 	}
 };

@@ -25,18 +25,7 @@
 	let range = $state('all');
 	let basis = $state('accrual');
 	let compare = $state(false);
-
-	// Resolve human-readable page title from the platforms registry
-	const pageTitle = $derived(() => {
-		for (const p of platforms) {
-			if (p.key === currentPlatform) {
-				for (const s of p.sections) {
-					if (s.key === currentSection) return s.label;
-				}
-			}
-		}
-		return `${currentPlatform.toUpperCase()}: ${currentSection}`;
-	});
+	let pageTitle = $state('');
 
 	async function load() {
 		isLoading = true;
@@ -48,6 +37,11 @@
 		currentSection = sec;
 		platform.set(plat);
 		section.set(sec);
+
+		// Resolve human-readable title from the registry
+		const pf = platforms.find(p => p.key === plat);
+		const sf = pf?.sections.find(s => s.key === sec);
+		pageTitle = sf?.label || `${plat.toUpperCase()}: ${sec}`;
 
 		try {
 			let result;

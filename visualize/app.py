@@ -542,7 +542,9 @@ def gt_fleet_body(since, until, state):
 
     # Mileage trend
     if tr and sum(r.get("mileage", 0) for r in tr) > 0:
-        from data.gt_data import _rgba
+        def _rgba(h, a):
+            h = h.lstrip("#")
+            return f"rgba({int(h[0:2],16)},{int(h[2:4],16)},{int(h[4:6],16)},{a})"
         df = pd.DataFrame(tr).sort_values("day")
         df["d"] = pd.to_datetime(df["day"])
         f = go.Figure()

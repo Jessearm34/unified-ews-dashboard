@@ -13,6 +13,13 @@ from fastapi import APIRouter, Query
 
 from api.cache import cached
 from api.utils import resolve_date_range, previous_range, compute_delta
+
+# Houston timezone
+try:
+    from zoneinfo import ZoneInfo
+    _HOUSTON = ZoneInfo("America/Chicago")
+except Exception:
+    _HOUSTON = timezone.utc
 from charts import qb_charts as QBC
 from charts import sd_charts as SDC
 from charts import issues_charts as IC
@@ -136,13 +143,15 @@ def _qb_kpis(qb_ds, start, end, prev_start, prev_end):
 
     return [
         {"label": "Revenue", "value": _fmt_val(revenue, "$"), "unit": "$", "platform": "QB", "hint": "", "rag": None,
-         "delta": compute_delta(revenue, prev_revenue), "delta_up_good": True},
+         "delta": compute_delta(revenue, prev_revenue), "delta_up_good": True, "deltaLabel": "vs. prior period",
+         "help": "Total revenue for the selected period from QuickBooks Profit & Loss"},
         {"label": "Cash on Hand", "value": _fmt_val(bs["cash"], "$"), "unit": "$", "platform": "QB", "hint": "", "rag": None,
          "delta": None, "delta_up_good": True},
         {"label": "Outstanding AR", "value": _fmt_val(bs["ar"], "$"), "unit": "$", "platform": "QB", "hint": "", "rag": None,
-         "delta": None, "delta_up_good": False},
+         "delta": None, "delta_up_good": False, "help": "Accounts receivable — invoiced but not yet collected"},
         {"label": "Net Income", "value": _fmt_val(pnl["net_income"], "$"), "unit": "$", "platform": "QB", "hint": "", "rag": None,
-         "delta": compute_delta(pnl["net_income"], prev_pnl["net_income"]), "delta_up_good": True},
+         "delta": compute_delta(pnl["net_income"], prev_pnl["net_income"]), "delta_up_good": True, "deltaLabel": "vs. prior period",
+         "help": "Profit & Loss net income for the selected period"},
     ]
 
 
@@ -263,7 +272,8 @@ def overview(range: str = Query("ytd", description="Date range key"),
     return {
         "kpis": kpis,
         "charts": charts,
-        "loaded_at": datetime.now(timezone.utc).isoformat(),
+        "loaded_at": datetime.now(_HOUSTON).isoformat(),
+        "range_info": f"{range.upper()} · {start.strftime('%b %d')} – {end.strftime('%b %d, %Y')}",
         "has_more": {
             "qb": qb_ds is not None,
             "sd": sd_ds is not None,

@@ -87,6 +87,10 @@
 	</button>
 </div>
 
+{#if data?.range_info}
+	<div class="note" style="margin-bottom:14px">Showing {data.range_info}</div>
+{/if}
+
 {#if isLoading}
 	<div class="loading"><span class="spinner"></span> Loading dashboard data...</div>
 {:else if errMsg}

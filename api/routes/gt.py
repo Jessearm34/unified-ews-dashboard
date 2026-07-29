@@ -35,7 +35,7 @@ def _fig_html(fig, height=350):
     return fig.to_html(include_plotlyjs=False, full_html=False, config=_PLOT_CONFIG)
 
 
-def _kpi_dict(label, value, hint="", unit=""):
+def _kpi_dict(label, value, hint="", unit="", help="", delta_label=""):
     if value is None:
         val_str = "—"
     elif isinstance(value, float):
@@ -46,7 +46,7 @@ def _kpi_dict(label, value, hint="", unit=""):
         val_str = str(value)
     if unit == "$" and isinstance(value, (int, float)):
         val_str = f"${val_str}"
-    return {"label": label, "value": val_str, "unit": unit, "hint": hint or "", "rag": None, "platform": "GT", "delta": None, "delta_up_good": True}
+    return {"label": label, "value": val_str, "unit": unit, "hint": hint or "", "rag": None, "platform": "GT", "delta": None, "delta_up_good": True, "help": help, "deltaLabel": delta_label}
 
 
 def _load_gt():

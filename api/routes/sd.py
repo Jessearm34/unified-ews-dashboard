@@ -19,10 +19,10 @@ def _load_sd():
         return ds
     return None
 
-def _kpi_dict(label, value, unit="", hint="", rag=None, platform="SD", delta=None, delta_up_good=True):
+def _kpi_dict(label, value, unit="", hint="", rag=None, platform="SD", delta=None, delta_up_good=True, help="", delta_label=""):
     if isinstance(value, (int, float)):
-        return {"label": label, "value": value, "unit": unit, "hint": hint or "", "rag": rag, "platform": platform, "delta": delta, "delta_up_good": delta_up_good}
-    return {"label": label, "value": 0, "unit": unit, "hint": str(value) if value else "", "rag": rag, "platform": platform, "delta": delta, "delta_up_good": delta_up_good}
+        return {"label": label, "value": value, "unit": unit, "hint": hint or "", "rag": rag, "platform": platform, "delta": delta, "delta_up_good": delta_up_good, "help": help, "deltaLabel": delta_label}
+    return {"label": label, "value": 0, "unit": unit, "hint": str(value) if value else "", "rag": rag, "platform": platform, "delta": delta, "delta_up_good": delta_up_good, "help": help, "deltaLabel": delta_label}
 
 
 @router.get("/_api/sd/{section}")
@@ -77,17 +77,22 @@ async def sd_section(section: str = "hse",
             _kpi_dict("Overdue Items", float(sched_c["overdue"]), "",
                       rag=_rag_for_value(sched_c["overdue"], 5, 15, False)),
             _kpi_dict("BBSO Observations", float(brc["total_bbso"]), "",
-                      hint=f"{brc['bbso_this_month']} this month · {brc['bbso_contributors']} observers"),
+                      hint=f"{brc['bbso_this_month']} this month · {brc['bbso_contributors']} observers",
+                      help="Behavior-based safety observations track proactive safety engagement by category (PPE, housekeeping, line of fire, etc.)"),
             _kpi_dict("RIR / Near Miss Reports", float(brc["total_rir"]), "",
-                      hint=f"{brc['rir_this_month']} this month · {brc['rir_contributors']} reporters"),
+                      hint=f"{brc['rir_this_month']} this month · {brc['rir_contributors']} reporters",
+                      help="Recordable incident reports and near-miss reports — captures events before they become injuries"),
             _kpi_dict("Worker Participation", part["pct"], "%",
-                      rag=_rag_for_value(part["pct"], 80, 60)),
+                      rag=_rag_for_value(part["pct"], 80, 60),
+                      help="Percentage of active workers who submitted at least one safety form this month"),
             _kpi_dict("BBSO:Incident Ratio", float(bir["ratio"]), ":1",
                       hint=f"{bir['total_bbso']} BBSO · {bir['total_incidents']} incidents",
-                      rag=_rag_for_value(bir["ratio"], 5, 2)),
+                      rag=_rag_for_value(bir["ratio"], 5, 2),
+                      help="Leading indicator — proactive observations per actual incident. >5:1 indicates strong safety culture"),
             _kpi_dict("Reporting Culture Index", float(rir_ratio["ratio"]), ":1",
                       hint=f"{rir_ratio['total_rir']} RIRs · {rir_ratio['total_incidents']} incidents",
-                      rag=_rag_for_value(rir_ratio["ratio"], 5, 2)),
+                      rag=_rag_for_value(rir_ratio["ratio"], 5, 2),
+                      help="Near-miss reporting rate — high values show people report hazards before they cause injuries"),
             _kpi_dict("Avg Incident Close Time", float(close_time["mean_days"]), "days",
                       hint=f"median {close_time['median_days']}d · {close_time['closed_count']} closed",
                       rag=_rag_for_value(close_time["mean_days"], 14, 30, False)),

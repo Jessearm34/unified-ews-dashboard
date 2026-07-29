@@ -867,7 +867,7 @@ def app_shell(state: dict):
     section = state.get("section", "")
 
     # Load data
-    qb_ds = D.load_qb_dataset()
+    qb_ds = QB.qb_load_dataset()
     sd_ds = SD.sd_load_dataset()
 
     # Date range
@@ -968,7 +968,7 @@ def view(req):
     state = get_state(req)
     if state.get("waterfall"):
         # HTMX drilldown fragment — only return the breakdown
-        qb_ds = D.load_qb_dataset()
+        qb_ds = QB.qb_load_dataset()
         start, end, _ = resolve_range(state, qb_ds)
         summary = QB.pnl_summary(qb_ds.pnl, state.get("basis", "accrual"), start, end)
         cat = state["waterfall"]

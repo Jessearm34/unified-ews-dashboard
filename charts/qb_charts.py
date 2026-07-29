@@ -66,23 +66,57 @@ def empty(message: str = "No data for this range") -> str:
 
 
 def trend(invoices: pd.DataFrame, metric: str, compare_invoices: pd.DataFrame | None = None) -> str:
+    from datetime import date as dt_date
     _, _, ylabel, color = D.TREND_SPECS[metric]
     df = D.trend_series(invoices, metric)
     if df.empty:
         return empty()
     hover_fmt = "%{y:,.2f}" if metric in ("revenue", "avg_invoice") else "%{y:,.0f}"
-    fig = go.Figure(
-        go.Scatter(
-            x=df["Month"],
-            y=df["value"],
+
+    today = dt_date.today()
+    current_month_start = pd.Timestamp(today.replace(day=1))
+    completed = df[df["Month"] < current_month_start]
+    in_progress = df[df["Month"] >= current_month_start]
+
+    fig = go.Figure()
+
+    # Completed months: normal trace
+    if not completed.empty:
+        fig.add_trace(go.Scatter(
+            x=completed["Month"], y=completed["value"],
             mode="lines+markers",
             line=dict(color=color, width=3, shape="spline"),
             marker=dict(size=7, color=color),
             fill="tozeroy",
             fillcolor=_rgba(color, 0.10),
+            name="Completed",
             hovertemplate=f"%{{x|%b %Y}}<br>{hover_fmt}<extra></extra>",
-        )
-    )
+        ))
+
+    # Current month: open circle before 25th, connected after
+    if not in_progress.empty:
+        row = in_progress.iloc[0]
+        if today.day < 25:
+            fig.add_trace(go.Scatter(
+                x=[row["Month"]], y=[row["value"]],
+                mode="markers",
+                marker=dict(size=9, color=color, symbol="circle-open",
+                           line=dict(color=color, width=2)),
+                name="Current month",
+                hovertemplate=f"%{{x|%b %Y}}<br>{hover_fmt}<extra></extra>",
+            ))
+        else:
+            all_pts = pd.concat([completed, in_progress]).sort_values("Month")
+            fig.add_trace(go.Scatter(
+                x=all_pts["Month"], y=all_pts["value"],
+                mode="lines+markers",
+                line=dict(color=color, width=3, shape="spline"),
+                marker=dict(size=7, color=color),
+                fill="tozeroy",
+                fillcolor=_rgba(color, 0.10),
+                name="Completed",
+                hovertemplate=f"%{{x|%b %Y}}<br>{hover_fmt}<extra></extra>",
+            ))
     # Overlay comparison (last year / previous period)
     if compare_invoices is not None and not compare_invoices.empty:
         cdf = D.trend_series(compare_invoices, metric)

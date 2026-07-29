@@ -798,14 +798,14 @@ def basis_toggle(state):
 
 PLATFORM_KPI_BUILDERS = {
     "qb": lambda ds, inv, start, end, state: [
-        kpi_card("Revenue", ds.pnl["income"] if not ds.pnl.empty else inv["Revenue"].sum(), "$",
-                 help_text="Revenue for the selected period"),
-        kpi_card("Cash on Hand", ds.accounts["CurrentBalance"].sum(), "$" if ds.accounts["CurrentBalance"].sum() < 1e6 else "$"),
-        kpi_card("Outstanding AR", inv.loc[inv["RevenueBalance"] > 0, "RevenueBalance"].sum(), "$",
+        kpi_card("Revenue", inv["Revenue"].sum(), "$",
+                 help_text="Invoiced revenue for the selected period"),
+        kpi_card("Cash on Hand", float(ds.accounts["CurrentBalance"].sum()), "$",
+                 help_text="Total cash across all accounts"),
+        kpi_card("Outstanding AR", float(inv.loc[inv["RevenueBalance"] > 0, "RevenueBalance"].sum()), "$",
                  help_text="Accounts receivable — invoiced but not yet collected"),
-        kpi_card("Overdue", inv.loc[inv["Overdue"], "RevenueBalance"].sum(), "$",
+        kpi_card("Overdue", float(inv.loc[inv["Overdue"], "RevenueBalance"].sum()), "$",
                  help_text="Past-due receivables"),
-        kpi_card("DSO", 0, "days"),  # placeholder
     ],
     "sd": lambda ds, inv, start, end, state: [
         kpi_card("Schedule Compliance", SD.schedule_counts(ds.schedules)["completion_pct"], "%",

@@ -57,7 +57,6 @@ export const platforms = [
 	// 	sections: [
 	// 		{ key: 'workers', label: 'Workers', icon: '👥' },
 	// 		{ key: 'certs', label: 'Certifications', icon: '📜' },
-	// 		{ key: 'training', label: 'Training', icon: '📚' },
 	// 	]
 	// },
 

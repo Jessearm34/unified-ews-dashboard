@@ -1,7 +1,10 @@
-"""Data pipeline for Insperity HR — worker records, certifications, and training compliance.
+"""Data pipeline for Insperity HR — worker records and certifications.
 
 Pulls from the Insperity Public API (https://developer.insperity.com/)
-Requires: client credentials, IP whitelisting, signed API Terms of Use.
+CONFIRMED: employees and certifications endpoints available.
+NOT AVAILABLE: training data (confirmed by Insperity PM 2026-07-30).
+
+Requires: API key, client ID, IP whitelisting, signed API Terms of Use.
 
 ENABLED = False  —  set True when credentials are ready.
 """
@@ -10,7 +13,7 @@ from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from functools import lru_cache
 from typing import Any
@@ -19,19 +22,19 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 # ═══════════════════════════════════════════════════════════════════════
-#  PILLBOX SWITCH  —  flip to True when you're ready to pull live data
+#  PILLBOX SWITCH
 # ═══════════════════════════════════════════════════════════════════════
 
 ENABLED = False
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Configuration  (set these env vars before enabling)
+#  Configuration  (set env vars before enabling)
 # ═══════════════════════════════════════════════════════════════════════
 
 INSPERITY_BASE_URL = os.environ.get("INSPERITY_BASE_URL", "https://api.insperity.com/v1")
 INSPERITY_CLIENT_ID = os.environ.get("INSPERITY_CLIENT_ID", "")
 INSPERITY_API_KEY = os.environ.get("INSPERITY_API_KEY", "")
-INSPERITY_DATABASE_URL = os.environ.get("INSPERITY_DATABASE_URL", "")  # warehouse mirror
+INSPERITY_DATABASE_URL = os.environ.get("INSPERITY_DATABASE_URL", "")
 
 _CACHE_TTL = 600
 _DATASET_CACHE: InsDataset | None = None
@@ -43,11 +46,7 @@ _CACHE_TIMESTAMP: float = 0.0
 
 @lru_cache(maxsize=1)
 def _insperity_engine():
-    """
-    SQLAlchemy engine for the Insperity warehouse mirror.
-
-    UNCOMMENT and set ``INSPERITY_DATABASE_URL`` when the mirror exists.
-    """
+    """SQLAlchemy engine for the Insperity warehouse mirror (UNCOMMENT when live)."""
     # url = os.environ.get("INSPERITY_DATABASE_URL", "")
     # if not url:
     #     raise RuntimeError("INSPERITY_DATABASE_URL is not set")
@@ -56,7 +55,7 @@ def _insperity_engine():
     # elif url.startswith("postgresql://") and "+psycopg2" not in url:
     #     url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
     # return create_engine(url, connect_args={"sslmode": "require"})
-    return None  # no engine yet — safe no-op
+    return None
 
 
 # ── Dataset ────────────────────────────────────────────────────────────
@@ -64,20 +63,16 @@ def _insperity_engine():
 
 @dataclass
 class InsDataset:
-    """Snapshot of all Insperity data loaded for the dashboard."""
+    """Snapshot of Insperity data loaded for the dashboard.
+
+    Training removed — confirmed unavailable by Insperity PM (2026-07-30).
+    """
 
     employees: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
     certifications: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
-    training: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
-    departments: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
-    employment_status: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
-
-    # ── Pulled from imports to avoid NameError inside dataclass ──────
-    # (PEP 557 fields are evaluated in the class body, not the module scope.)
 
 
 def _empty_ins_dataset() -> InsDataset:
-    """Return a safe empty dataset (used when the pipeline is disabled)."""
     return InsDataset()
 
 
@@ -85,12 +80,9 @@ def _empty_ins_dataset() -> InsDataset:
 
 
 def _insperity_api_get(endpoint: str, params: dict | None = None) -> dict | list:
-    """
-    Call the Insperity REST API.
+    """Call the Insperity REST API.
 
-    UNCOMMENT and set credentials when ready.
-
-    Headers required:
+    Headers:
         Authorization: Bearer <token>
         X-Client-Id: <INSPERITY_CLIENT_ID>
     """
@@ -115,10 +107,8 @@ def _insperity_api_get(endpoint: str, params: dict | None = None) -> dict | list
 
 
 def load_employees() -> pd.DataFrame:
-    """
-    Fetch active employees from Insperity.
+    """GET /v1/employees — roster with status and department.
 
-    Endpoint: GET /v1/employees
     Returns: employeeId, firstName, lastName, email, departmentId,
              hireDate, status, workerType
     """
@@ -129,15 +119,12 @@ def load_employees() -> pd.DataFrame:
         ])
     # raw = _insperity_api_get("employees")
     # df = pd.DataFrame(raw)
-    # ... transform / flatten / validate ...
+    # ... transform / flatten ...
     return pd.DataFrame()
 
 
 def load_certifications() -> pd.DataFrame:
-    """
-    Fetch certifications and compliance records.
-
-    Endpoint: GET /v1/employees/{id}/certifications  (per employee)
+    """GET /v1/employees/{id}/certifications — per-employee certs.
 
     Returns: employeeId, certName, issuedDate, expiryDate, status
     """
@@ -148,27 +135,8 @@ def load_certifications() -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def load_training() -> pd.DataFrame:
-    """
-    Fetch training-compliance records.
-
-    Endpoint: candidate — confirm exact path with Insperity Integration Specialist.
-
-    Returns: employeeId, courseName, completedDate, expiresDate, status
-    """
-    if not ENABLED:
-        return pd.DataFrame(columns=[
-            "employeeId", "courseName", "completedDate", "expiresDate", "status",
-        ])
-    return pd.DataFrame()
-
-
 def load_dataset() -> InsDataset | None:
-    """
-    Full Insperity dataset — cached for CACHE_TTL seconds.
-
-    Returns None when disabled, InsDataset when ENABLED = True.
-    """
+    """Full Insperity dataset — cached for CACHE_TTL seconds."""
     global _DATASET_CACHE, _CACHE_TIMESTAMP
     now = time.monotonic()
     if _DATASET_CACHE is not None and now - _CACHE_TIMESTAMP < _CACHE_TTL:
@@ -180,11 +148,10 @@ def load_dataset() -> InsDataset | None:
         _CACHE_TIMESTAMP = now
         return ds
 
-    # ── LIVE path (commented out until credentials are set) ─────────
+    # ── LIVE path (uncomment when credentials ready) ────────────────
     # ds = InsDataset(
     #     employees=load_employees(),
     #     certifications=load_certifications(),
-    #     training=load_training(),
     # )
     # _DATASET_CACHE = ds
     # _CACHE_TIMESTAMP = now
@@ -197,21 +164,11 @@ def load_dataset() -> InsDataset | None:
 
 
 def inspect_errors(dataset: InsDataset | None = None) -> dict[str, Any]:
-    """
-    Inspect the loaded dataset for data-quality issues.
-
-    Call this in a REPL or notebook to check your pipeline before wiring
-    into the dashboard routes:
+    """Inspect for data-quality issues.
 
         from data import insperity as INS
         ds = INS.load_dataset()
         issues = INS.inspect_errors(ds)
-
-    Returns a dict with counts of:
-        - missing required fields by table
-        - date ranges (min / max)
-        - row counts
-        - any data anomalies detected
     """
     if dataset is None:
         return {"pipeline": "DISABLED — set ENABLED = True to inspect live data"}
@@ -219,7 +176,6 @@ def inspect_errors(dataset: InsDataset | None = None) -> dict[str, Any]:
     report: dict[str, Any] = {
         "employees": {"rows": len(dataset.employees), "missing_name": 0, "missing_email": 0},
         "certifications": {"rows": len(dataset.certifications), "missing_expiry": 0, "expired": 0},
-        "training": {"rows": len(dataset.training), "missing_completed": 0},
     }
 
     if not dataset.employees.empty:
@@ -245,12 +201,10 @@ def inspect_errors(dataset: InsDataset | None = None) -> dict[str, Any]:
 
 
 def source_label() -> str:
-    """Human-readable label for the data source."""
-    return "Insperity HR · https://developer.insperity.com"
+    return "Insperity HR · developer.insperity.com"
 
 
 def last_updated() -> str:
-    """ISO timestamp of the last successful data load."""
     if _DATASET_CACHE is None:
         return "never — ENABLED is False"
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(_CACHE_TIMESTAMP))

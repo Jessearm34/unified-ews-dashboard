@@ -142,6 +142,22 @@ try:
 except ImportError:
     log.warning("Router not found: api/routes/gt.py — skipping")
 
+# Insperity  (commented out — ENABLED = False in data pipeline)
+# try:
+#     from api.routes.insperity import router as insperity_router
+#     app.include_router(insperity_router)
+#     log.info("Mounted router: insperity")
+# except ImportError:
+#     log.warning("Router not found: api/routes/insperity.py — skipping")
+
+# Equipt  (commented out — ENABLED = False in data pipeline)
+# try:
+#     from api.routes.equipt import router as equipt_router
+#     app.include_router(equipt_router)
+#     log.info("Mounted router: equipt")
+# except ImportError:
+#     log.warning("Router not found: api/routes/equipt.py — skipping")
+
 # Admin / debug
 try:
     from api.routes.admin import router as admin_router

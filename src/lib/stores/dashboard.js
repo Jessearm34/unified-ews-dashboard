@@ -47,11 +47,41 @@ export const platforms = [
 			{ key: 'fleet', label: 'Fleet Overview', icon: '📊' },
 			{ key: 'maintenance', label: 'Maintenance', icon: '🔧' }
 		]
-	}
+	},
+
+	// ── Insperity  (disabled — uncomment when ENABLED = True in data pipeline) ───
+	// {
+	// 	key: 'in',
+	// 	label: 'Insperity',
+	// 	icon: '👤',
+	// 	sections: [
+	// 		{ key: 'workers', label: 'Workers', icon: '👥' },
+	// 		{ key: 'certs', label: 'Certifications', icon: '📜' },
+	// 		{ key: 'training', label: 'Training', icon: '📚' },
+	// 	]
+	// },
+
+	// ── Equipt  (disabled — uncomment when ENABLED = True in data pipeline) ─────
+	// {
+	// 	key: 'eq',
+	// 	label: 'Equipt',
+	// 	icon: '🔩',
+	// 	sections: [
+	// 		{ key: 'equipment', label: 'Equipment', icon: '🏗️' },
+	// 		{ key: 'maintenance', label: 'Maintenance', icon: '🔧' },
+	// 		{ key: 'inspections', label: 'Inspections', icon: '🔍' },
+	// 	]
+	// },
 ];
 
-/** KPI color helpers */
+export const deltaUpGood = platform => ({
+	qb: { revenue: true, net_income: true, cash: true, outstanding: false, overdue: false, dso: false },
+	sd: { compliance: true, overdue: false, participation: true, bbso_ratio: true, close_time: false },
+	gt: { idle_cost: false, violations: false, safety_score: true },
+}[platform] || {});
+
 export function ragColor(status) {
+	if (!status) return '#64748b';
 	return { green: '#16a34a', amber: '#ea580c', red: '#dc2626' }[status] || '#64748b';
 }
 

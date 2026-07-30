@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { fetchQB, fetchSD, fetchGT } from '$lib/api.js';
+		import { fetchQB, fetchSD, fetchGT, fetchIN } from '$lib/api.js';
 	import { platform, section, platforms } from '$lib/stores/dashboard.js';
 	import KPICard from '$lib/components/KPICard.svelte';
 	import Panel from '$lib/components/Panel.svelte';
@@ -49,8 +49,10 @@
 				result = await fetchQB(sec, { basis, range });
 			} else if (plat === 'sd') {
 				result = await fetchSD(sec, compare);
-			} else if (plat === 'gt') {
-				result = await fetchGT(sec, range);
+						} else if (plat === 'gt') {
+							result = await fetchGT(sec, range);
+						} else if (plat === 'in') {
+							result = await fetchIN(sec);
 			} else {
 				throw new Error('Unknown platform');
 			}

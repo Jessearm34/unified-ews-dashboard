@@ -1,210 +1,97 @@
-"""Data pipeline for Insperity HR — worker records and certifications.
+"""Insperity data module — reads from warehouse tables populated by the sync worker.
 
-Pulls from the Insperity Public API (https://developer.insperity.com/)
-CONFIRMED: employees and certifications endpoints available.
-NOT AVAILABLE: training data (confirmed by Insperity PM 2026-07-30).
+The sync worker (pull_insperity.py) runs on the DigitalOcean droplet every 10 min,
+pulling from Insperity's API and upserting into these warehouse tables:
 
-Requires: API key, client ID, IP whitelisting, signed API Terms of Use.
-
-ENABLED = False  —  set True when credentials are ready.
+    insperity_employees    — employee_id, first_name, last_name, email, status
+    insperity_employment   — employee_id, hire_date, employment_status, worker_type
+    insperity_positions    — employee_id, job_title, department_id, department_name, supervisor_id
+    insperity_departments  — department_id, department_name
+    insperity_locations    — location_id, location_name
+    insperity_communication — employee_id, email, phone
 """
 
 from __future__ import annotations
 
 import os
-import time
 from dataclasses import dataclass, field
-from datetime import date
-from functools import lru_cache
+from datetime import datetime
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import create_engine
-
-# ═══════════════════════════════════════════════════════════════════════
-#  PILLBOX SWITCH
-# ═══════════════════════════════════════════════════════════════════════
-
-ENABLED = False
-
-# ═══════════════════════════════════════════════════════════════════════
-#  Configuration  (set env vars before enabling)
-# ═══════════════════════════════════════════════════════════════════════
-
-INSPERITY_BASE_URL = os.environ.get("INSPERITY_BASE_URL", "https://api.insperity.com/v1")
-INSPERITY_CLIENT_ID = os.environ.get("INSPERITY_CLIENT_ID", "")
-INSPERITY_API_KEY = os.environ.get("INSPERITY_API_KEY", "")
-INSPERITY_DATABASE_URL = os.environ.get("INSPERITY_DATABASE_URL", "")
-
-_CACHE_TTL = 600
-_DATASET_CACHE: InsDataset | None = None
-_CACHE_TIMESTAMP: float = 0.0
+from sqlalchemy import create_engine, text
 
 
-# ── Engine ────────────────────────────────────────────────────────────
-
-
-@lru_cache(maxsize=1)
-def _insperity_engine():
-    """SQLAlchemy engine for the Insperity warehouse mirror (UNCOMMENT when live)."""
-    # url = os.environ.get("INSPERITY_DATABASE_URL", "")
-    # if not url:
-    #     raise RuntimeError("INSPERITY_DATABASE_URL is not set")
-    # if url.startswith("postgres://"):
-    #     url = url.replace("postgres://", "postgresql+psycopg2://", 1)
-    # elif url.startswith("postgresql://") and "+psycopg2" not in url:
-    #     url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
-    # return create_engine(url, connect_args={"sslmode": "require"})
-    return None
-
-
-# ── Dataset ────────────────────────────────────────────────────────────
+def ins_engine():
+    """SQLAlchemy engine using the shared DATABASE_URL (reads from warehouse)."""
+    url = os.environ.get("DATABASE_URL", "")
+    if not url:
+        raise RuntimeError("DATABASE_URL not set")
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgresql://") and "+psycopg2" not in url:
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return create_engine(url, connect_args={"sslmode": "require"})
 
 
 @dataclass
 class InsDataset:
-    """Snapshot of Insperity data loaded for the dashboard.
+    employees: pd.DataFrame = field(default_factory=pd.DataFrame)
+    employment: pd.DataFrame = field(default_factory=pd.DataFrame)
+    positions: pd.DataFrame = field(default_factory=pd.DataFrame)
+    departments: pd.DataFrame = field(default_factory=pd.DataFrame)
+    locations: pd.DataFrame = field(default_factory=pd.DataFrame)
+    communication: pd.DataFrame = field(default_factory=pd.DataFrame)
 
-    Training removed — confirmed unavailable by Insperity PM (2026-07-30).
-    """
-
-    employees: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
-    certifications: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
-
-
-def _empty_ins_dataset() -> InsDataset:
-    return InsDataset()
-
-
-# ── API client (commented out) ────────────────────────────────────────
-
-
-def _insperity_api_get(endpoint: str, params: dict | None = None) -> dict | list:
-    """Call the Insperity REST API.
-
-    Headers:
-        Authorization: Bearer <token>
-        X-Client-Id: <INSPERITY_CLIENT_ID>
-    """
-    # import requests
-    # token = _get_insperity_token()
-    # resp = requests.get(
-    #     f"{INSPERITY_BASE_URL}/{endpoint}",
-    #     headers={
-    #         "Authorization": f"Bearer {token}",
-    #         "X-Client-Id": INSPERITY_CLIENT_ID,
-    #         "Accept": "application/json",
-    #     },
-    #     params=params or {},
-    #     timeout=30,
-    # )
-    # resp.raise_for_status()
-    # return resp.json()
-    return []
-
-
-# ── Load functions ────────────────────────────────────────────────────
-
-
-def load_employees() -> pd.DataFrame:
-    """GET /v1/employees — roster with status and department.
-
-    Returns: employeeId, firstName, lastName, email, departmentId,
-             hireDate, status, workerType
-    """
-    if not ENABLED:
-        return pd.DataFrame(columns=[
-            "employeeId", "firstName", "lastName", "email",
-            "departmentId", "hireDate", "status", "workerType",
-        ])
-    # raw = _insperity_api_get("employees")
-    # df = pd.DataFrame(raw)
-    # ... transform / flatten ...
-    return pd.DataFrame()
-
-
-def load_certifications() -> pd.DataFrame:
-    """GET /v1/employees/{id}/certifications — per-employee certs.
-
-    Returns: employeeId, certName, issuedDate, expiryDate, status
-    """
-    if not ENABLED:
-        return pd.DataFrame(columns=[
-            "employeeId", "certName", "issuedDate", "expiryDate", "status",
-        ])
-    return pd.DataFrame()
+    @property
+    def has_data(self) -> bool:
+        return not self.employees.empty or not self.departments.empty
 
 
 def load_dataset() -> InsDataset | None:
-    """Full Insperity dataset — cached for CACHE_TTL seconds."""
-    global _DATASET_CACHE, _CACHE_TIMESTAMP
-    now = time.monotonic()
-    if _DATASET_CACHE is not None and now - _CACHE_TIMESTAMP < _CACHE_TTL:
-        return _DATASET_CACHE
+    """Read Insperity data from the warehouse tables.
 
-    if not ENABLED:
-        ds = _empty_ins_dataset()
-        _DATASET_CACHE = ds
-        _CACHE_TIMESTAMP = now
-        return ds
-
-    # ── LIVE path (uncomment when credentials ready) ────────────────
-    # ds = InsDataset(
-    #     employees=load_employees(),
-    #     certifications=load_certifications(),
-    # )
-    # _DATASET_CACHE = ds
-    # _CACHE_TIMESTAMP = now
-    # return ds
-
-    return None
-
-
-# ── Error inspection ──────────────────────────────────────────────────
-
-
-def inspect_errors(dataset: InsDataset | None = None) -> dict[str, Any]:
-    """Inspect for data-quality issues.
-
-        from data import insperity as INS
-        ds = INS.load_dataset()
-        issues = INS.inspect_errors(ds)
+    Returns None if the tables don't exist yet or the connection fails.
     """
-    if dataset is None:
-        return {"pipeline": "DISABLED — set ENABLED = True to inspect live data"}
-
-    report: dict[str, Any] = {
-        "employees": {"rows": len(dataset.employees), "missing_name": 0, "missing_email": 0},
-        "certifications": {"rows": len(dataset.certifications), "missing_expiry": 0, "expired": 0},
-    }
-
-    if not dataset.employees.empty:
-        report["employees"]["missing_name"] = int(
-            (dataset.employees[["firstName", "lastName"]].isna().any(axis=1)).sum()
+    try:
+        eng = ins_engine()
+        with eng.connect() as conn:
+            employees = pd.read_sql("SELECT * FROM insperity_employees", conn)
+            employment = pd.read_sql("SELECT * FROM insperity_employment", conn)
+            positions = pd.read_sql("SELECT * FROM insperity_positions", conn)
+            departments = pd.read_sql("SELECT * FROM insperity_departments", conn)
+            locations = pd.read_sql("SELECT * FROM insperity_locations", conn)
+            communication = pd.read_sql("SELECT * FROM insperity_communication", conn)
+        return InsDataset(
+            employees=employees, employment=employment, positions=positions,
+            departments=departments, locations=locations, communication=communication,
         )
-        report["employees"]["missing_email"] = int(dataset.employees["email"].isna().sum())
-
-    if not dataset.certifications.empty:
-        report["certifications"]["missing_expiry"] = int(
-            dataset.certifications["expiryDate"].isna().sum()
-        )
-        if dataset.certifications["expiryDate"].notna().any():
-            report["certifications"]["expired"] = int(
-                (pd.to_datetime(dataset.certifications["expiryDate"], errors="coerce")
-                 < pd.Timestamp.now("US/Central")).sum()
-            )
-
-    return report
+    except Exception:
+        return InsDataset()
 
 
-# ── Metadata ──────────────────────────────────────────────────────────
+def compute_kpis(ds: InsDataset) -> list[dict[str, Any]]:
+    """Compute dashboard KPIs from the loaded dataset."""
+    kpis = []
+
+    # Employee counts
+    total = len(ds.employees)
+    active = int((ds.employees["status"].str.lower() == "active").sum()) if not ds.employees.empty and "status" in ds.employees.columns else 0
+
+    kpis.append({"label": "Total Employees", "value": total, "unit": "", "hint": "", "rag": None, "platform": "IN", "delta": None, "delta_up_good": True, "help": "All employees in Insperity", "deltaLabel": ""})
+    kpis.append({"label": "Active Workers", "value": active, "unit": "", "hint": f"of {total} total", "rag": None, "platform": "IN", "delta": None, "delta_up_good": True, "help": "Currently active / not terminated", "deltaLabel": ""})
+
+    # Department count
+    dept_count = len(ds.departments)
+    kpis.append({"label": "Departments", "value": dept_count, "unit": "", "hint": "", "rag": None, "platform": "IN", "delta": None, "delta_up_good": True, "help": "Departments / cost centers", "deltaLabel": ""})
+
+    # Contractor count
+    if not ds.employment.empty and "worker_type" in ds.employment.columns:
+        contractors = int((ds.employment["worker_type"].str.lower().str.contains("contractor|1099")).sum())
+        kpis.append({"label": "Contractors", "value": contractors, "unit": "", "hint": "", "rag": None, "platform": "IN", "delta": None, "delta_up_good": True, "help": "Non-employee workers", "deltaLabel": ""})
+
+    return kpis
 
 
 def source_label() -> str:
-    return "Insperity HR · developer.insperity.com"
-
-
-def last_updated() -> str:
-    if _DATASET_CACHE is None:
-        return "never — ENABLED is False"
-    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(_CACHE_TIMESTAMP))
+    return "Insperity HR · synced via DigitalOcean droplet"

@@ -48,6 +48,10 @@ export function fetchGT(section, range = 'all') {
 	return request(`/_api/gt/${section}?range=${range}`);
 }
 
+export function fetchIN(section = 'workers') {
+	return request(`/_api/insperity/${section}`);
+}
+
 export function login(email, password, next = '/') {
 	return fetch('/login', {
 		method: 'POST',

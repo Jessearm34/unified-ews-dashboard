@@ -42,30 +42,36 @@ class InsDataset:
     departments: pd.DataFrame = field(default_factory=pd.DataFrame)
     locations: pd.DataFrame = field(default_factory=pd.DataFrame)
     communication: pd.DataFrame = field(default_factory=pd.DataFrame)
+    workers: pd.DataFrame = field(default_factory=pd.DataFrame)  # unified view
 
     @property
     def has_data(self) -> bool:
-        return not self.employees.empty or not self.departments.empty
+        return not self.workers.empty or not self.employees.empty
 
 
 def load_dataset() -> InsDataset | None:
-    """Read Insperity data from the warehouse tables.
-
-    Returns None if the tables don't exist yet or the connection fails.
-    """
+    """Read Insperity data from the warehouse tables."""
     try:
         eng = ins_engine()
         with eng.connect() as conn:
-            employees = pd.read_sql("SELECT * FROM insperity_employees", conn)
-            employment = pd.read_sql("SELECT * FROM insperity_employment", conn)
-            positions = pd.read_sql("SELECT * FROM insperity_positions", conn)
-            departments = pd.read_sql("SELECT * FROM insperity_departments", conn)
-            locations = pd.read_sql("SELECT * FROM insperity_locations", conn)
-            communication = pd.read_sql("SELECT * FROM insperity_communication", conn)
-        return InsDataset(
-            employees=employees, employment=employment, positions=positions,
-            departments=departments, locations=locations, communication=communication,
-        )
+            workers = pd.read_sql("SELECT * FROM insperity_workers", conn)
+            # Optional raw tables for debugging
+            try:
+                employees = pd.read_sql("SELECT * FROM insperity_employees", conn)
+            except Exception:
+                employees = pd.DataFrame()
+            try:
+                departments = pd.read_sql("SELECT * FROM insperity_departments", conn)
+            except Exception:
+                departments = pd.DataFrame()
+            try:
+                locations = pd.read_sql("SELECT * FROM insperity_locations", conn)
+            except Exception:
+                locations = pd.DataFrame()
+            return InsDataset(
+                employees=employees, departments=departments, locations=locations,
+                workers=workers,
+            )
     except Exception:
         return InsDataset()
 

@@ -1,24 +1,20 @@
-"""Insperity → Postgres sync worker. Runs on cron every 10 minutes on the droplet.
+"""Insperity → Postgres sync worker. Runs on cron every 10 minutes on the DO droplet.
 
-Pulls employee roster, employment details, positions, departments, and locations
-from Insperity's Public API and upserts them into the warehouse database so the
-dashboard can read them alongside SiteDocs, GeoTab, and QuickBooks data.
+Pulls employee roster, employment, positions, departments, and locations
+from Insperity's API.  Builds a unified worker view with Direct/Indirect
+classification and region mapping, then upserts into the Railway warehouse.
 
-Set these env vars before running:
-    INSPERITY_CLIENT_ID      — from Insperity Integration Specialist
-    INSPERITY_API_KEY      — from Insperity
-    DATABASE_URL             — Railway Postgres (reseau.proxy.rlwy.net:...)
+Mike Skrbich wants: headcount broken down by Direct (field) vs Indirect (SGA),
+plus a regional breakdown.  Classification is driven by department name —
+"Field Operators" and similar → Direct, everything else → Indirect.
 """
 
 from __future__ import annotations
 
 import os
-import sys
 import time
-import json
 import logging
 from datetime import datetime, timezone
-from urllib.parse import urlparse, urlunparse
 
 import requests
 import pandas as pd
@@ -38,19 +34,22 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 TABLE_PREFIX = "insperity_"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+# Department names that map to Direct (field / operational)
+DIRECT_DEPARTMENTS = {
+    "field operators", "field operations", "field", "operations",
+    "manufacturing", "shop", "installation", "maintenance",
+}
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("insperity-sync")
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Database helpers
+#  Database
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def _get_engine():
+def _engine():
     url = DATABASE_URL
     if not url:
         raise RuntimeError("DATABASE_URL not set")
@@ -61,306 +60,227 @@ def _get_engine():
     return create_engine(url)
 
 
-def upsert_df(engine, table_name: str, df: pd.DataFrame, pk_cols: list[str]):
-    """Insert or update rows in *table_name* keyed on *pk_cols*.
-
-    Rows matching on all pk columns are updated; new rows are inserted.
-    """
+def _fresh_table(engine, table: str, df: pd.DataFrame):
+    """Replace the whole table in a transaction."""
     if df.empty:
-        log.info("  %s: nothing to upsert (0 rows)", table_name)
+        log.info("  %s: no rows — skipping", table)
         return
-
-    schema = "public"
-    full_name = f"{schema}.{TABLE_PREFIX}{table_name}"
-    now = datetime.now(timezone.utc).isoformat()
-
+    full = f"public.{TABLE_PREFIX}{table}"
     with engine.begin() as conn:
-        # Ensure table structure matches DataFrame columns
-        # We don't CREATE TABLE here — assume it already exists from a prior run or migration.
-        # On first run the upsert will create the table implicitly via pandas to_sql,
-        # then subsequent runs do the upsert.
-
-        for _, row in df.iterrows():
-            record = row.to_dict()
-            record["_synced_at"] = now
-
-            where = " AND ".join(f'"{c}" = :{c}' for c in pk_cols)
-            check = conn.execute(
-                text(f'SELECT 1 FROM {full_name} WHERE {where} LIMIT 1'),
-                record,
-            ).fetchone()
-
-            if check:
-                set_clause = ", ".join(
-                    f'"{c}" = :{c}' for c in record if c not in pk_cols
-                )
-                conn.execute(
-                    text(f"UPDATE {full_name} SET {set_clause} WHERE {where}"),
-                    record,
-                )
-            else:
-                cols = ", ".join(f'"{c}"' for c in record)
-                vals = ", ".join(f":{c}" for c in record)
-                conn.execute(
-                    text(f"INSERT INTO {full_name} ({cols}) VALUES ({vals})"),
-                    record,
-                )
-
-    log.info("  %s: upserted %d rows", table_name, len(df))
+        conn.execute(text(f"DROP TABLE IF EXISTS {full}"))
+        df.to_sql(f"{TABLE_PREFIX}{table}", conn, schema="public",
+                  index=False, if_exists="replace")
+    log.info("  %s: written %d rows", table, len(df))
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Insperity API client
+#  API client
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def _api_get(endpoint: str, params: dict | None = None) -> list[dict]:
-    """GET a paginated Insperity endpoint, return all results as a list of dicts."""
-    url = f"{INSPERITY_BASE}/public/company/{INSPERITY_CLIENT_ID}/{endpoint}/v2"
+def _api_get(endpoint: str, version: str = "v1") -> list[dict]:
+    url = f"{INSPERITY_BASE}/public/company/{INSPERITY_CLIENT_ID}/{endpoint}/{version}"
     headers = {
         "X-Client-Id": INSPERITY_CLIENT_ID,
         "X-API-Key": INSPERITY_API_KEY,
         "Accept": "application/json",
     }
-    all_results = []
+    all_items = []
+    params = None
 
     while url:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
+        if resp.status_code == 404:
+            log.warning("  endpoint %s/%s returned 404 — skipping", endpoint, version)
+            return []
         resp.raise_for_status()
         data = resp.json()
 
-        # Insperity may wrap results in a "data" or "results" key
         if isinstance(data, list):
-            all_results.extend(data)
+            all_items.extend(data)
         elif isinstance(data, dict):
             items = data.get("data") or data.get("results") or data.get("items") or []
-            all_results.extend(items)
+            all_items.extend(items)
+            url = data.get("next") or data.get("nextPage") or data.get("next_page") or None
+            params = None  # baked into next URL
+        else:
+            url = None
 
-        # Pagination — check for next link
-        url = None
-        if isinstance(data, dict):
-            next_link = data.get("next") or data.get("nextPage") or data.get("next_page")
-            if next_link:
-                url = next_link
-                params = None  # params are baked into the next URL
-
-    return all_results
+    return all_items
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Endpoint pullers  (each returns a DataFrame ready for upsert)
+#  Pullers
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def pull_employees() -> pd.DataFrame:
-    """
-    GET employees/v2 — basic roster.
-
-    Columns persisted: employee_id, first_name, last_name, email, status
-    """
-    if not INSPERITY_API_KEY:
-        log.warning("Skipping employees — INSPERITY_API_KEY not set")
-        return pd.DataFrame()
-
-    try:
-        raw = _api_get("employees")
-    except Exception as exc:
-        log.error("Failed to pull employees: %s", exc)
-        return pd.DataFrame()
-
+def _to_df(raw, mapping):
     if not raw:
         return pd.DataFrame()
-
     df = pd.DataFrame(raw)
-    # Normalize column names (Insperity uses camelCase)
-    mapping = {
-        "employeeId": "employee_id", "id": "employee_id",
-        "firstName": "first_name", "lastName": "last_name",
-        "email": "email", "status": "status",
-    }
     df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
-    for col in ["employee_id", "first_name", "last_name", "email", "status"]:
+    for col in set(mapping.values()):
         if col not in df.columns:
             df[col] = None
-    return df[["employee_id", "first_name", "last_name", "email", "status"]]
+    return df[list(dict.fromkeys(mapping.values()))]
 
 
-def pull_employment() -> pd.DataFrame:
-    """GET employeesemployment/v1 — hire date, worker type."""
-    if not INSPERITY_API_KEY:
-        return pd.DataFrame()
-
-    try:
-        raw = _api_get("employeesemployment", params={})
-    except Exception as exc:
-        log.error("Failed to pull employment: %s", exc)
-        return pd.DataFrame()
-
-    if not raw:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(raw)
-    mapping = {
-        "employeeId": "employee_id",
-        "hireDate": "hire_date",
-        "employmentStatus": "employment_status",
-        "workerType": "worker_type",
-        "terminationDate": "termination_date",
-    }
-    df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
-    for col in ["employee_id", "hire_date", "employment_status", "worker_type"]:
-        if col not in df.columns:
-            df[col] = None
-    return df[["employee_id", "hire_date", "employment_status", "worker_type"]]
+def pull_employees():
+    return _to_df(
+        _api_get("employees", "v2"),
+        {"employeeId": "employee_id", "id": "employee_id",
+         "firstName": "first_name", "lastName": "last_name",
+         "email": "email", "status": "status"},
+    )
 
 
-def pull_positions() -> pd.DataFrame:
-    """GET employeesposition/v1 — job title, department, supervisor."""
-    if not INSPERITY_API_KEY:
-        return pd.DataFrame()
-
-    try:
-        raw = _api_get("employeesposition", params={})
-    except Exception as exc:
-        log.error("Failed to pull positions: %s", exc)
-        return pd.DataFrame()
-
-    if not raw:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(raw)
-    mapping = {
-        "employeeId": "employee_id",
-        "jobTitle": "job_title",
-        "departmentId": "department_id",
-        "departmentName": "department_name",
-        "supervisorId": "supervisor_id",
-        "supervisorName": "supervisor_name",
-    }
-    df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
-    for col in ["employee_id", "job_title", "department_id", "department_name", "supervisor_id"]:
-        if col not in df.columns:
-            df[col] = None
-    return df[["employee_id", "job_title", "department_id", "department_name", "supervisor_id"]]
+def pull_employment():
+    return _to_df(
+        _api_get("employeesemployment"),
+        {"employeeId": "employee_id", "hireDate": "hire_date",
+         "employmentStatus": "employment_status",
+         "workerType": "worker_type", "terminationDate": "termination_date"},
+    )
 
 
-def pull_departments() -> pd.DataFrame:
-    """GET departments/v1 — department reference data."""
-    if not INSPERITY_API_KEY:
-        return pd.DataFrame()
-
-    try:
-        raw = _api_get("departments", params={})
-    except Exception as exc:
-        log.error("Failed to pull departments: %s", exc)
-        return pd.DataFrame()
-
-    if not raw:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(raw)
-    mapping = {
-        "departmentId": "department_id", "id": "department_id",
-        "name": "department_name", "departmentName": "department_name",
-        "costCenter": "cost_center",
-    }
-    df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
-    for col in ["department_id", "department_name"]:
-        if col not in df.columns:
-            df[col] = None
-    return df[["department_id", "department_name"]]
+def pull_positions():
+    return _to_df(
+        _api_get("employeesposition"),
+        {"employeeId": "employee_id", "jobTitle": "job_title",
+         "departmentId": "department_id", "departmentName": "department_name",
+         "supervisorId": "supervisor_id", "supervisorName": "supervisor_name"},
+    )
 
 
-def pull_locations() -> pd.DataFrame:
-    """GET locations/v1 — physical locations / sites."""
-    if not INSPERITY_API_KEY:
-        return pd.DataFrame()
-
-    try:
-        raw = _api_get("locations", params={})
-    except Exception as exc:
-        log.error("Failed to pull locations: %s", exc)
-        return pd.DataFrame()
-
-    if not raw:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(raw)
-    mapping = {
-        "locationId": "location_id", "id": "location_id",
-        "name": "location_name", "locationName": "location_name",
-        "address": "address", "city": "city", "state": "state", "zip": "zip",
-    }
-    df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
-    for col in ["location_id", "location_name"]:
-        if col not in df.columns:
-            df[col] = None
-    return df[["location_id", "location_name"]]
+def pull_departments():
+    return _to_df(
+        _api_get("departments"),
+        {"departmentId": "department_id", "id": "department_id",
+         "name": "department_name", "departmentName": "department_name"},
+    )
 
 
-def pull_communication() -> pd.DataFrame:
-    """GET employeescommunication/v1 — email, phone."""
-    if not INSPERITY_API_KEY:
-        return pd.DataFrame()
-
-    try:
-        raw = _api_get("employeescommunication", params={})
-    except Exception as exc:
-        log.error("Failed to pull communication: %s", exc)
-        return pd.DataFrame()
-
-    if not raw:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(raw)
-    mapping = {
-        "employeeId": "employee_id",
-        "email": "email",
-        "phone": "phone",
-        "workPhone": "work_phone",
-        "mobilePhone": "mobile_phone",
-    }
-    df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
-    for col in ["employee_id", "email", "phone"]:
-        if col not in df.columns:
-            df[col] = None
-    return df[["employee_id", "email", "phone"]]
+def pull_locations():
+    return _to_df(
+        _api_get("locations"),
+        {"locationId": "location_id", "id": "location_id",
+         "name": "location_name", "locationName": "location_name",
+         "city": "city", "state": "state"},
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Main sync
+#  Unified worker view  (the dashboard reads from this single table)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _classify(department_name: str | None) -> str:
+    """Direct = field/operational.  Indirect = SGA / support."""
+    if pd.isna(department_name) or not department_name:
+        return "indirect"
+    name = str(department_name).strip().lower()
+    for kw in DIRECT_DEPARTMENTS:
+        if kw in name:
+            return "direct"
+    return "indirect"
+
+
+def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
+    """Join all Insperity tables into one worker row with Direct/Indirect flag."""
+    if emp.empty:
+        return pd.DataFrame(columns=[
+            "employee_id", "first_name", "last_name", "email", "status",
+            "hire_date", "employment_status", "worker_type",
+            "job_title", "department_id", "department_name", "supervisor_id",
+            "classification", "region",
+        ])
+
+    df = emp.copy()
+
+    # Merge employment
+    if not empmt.empty:
+        df = df.merge(empmt, on="employee_id", how="left")
+
+    # Merge positions (job title, department, supervisor)
+    if not pos.empty:
+        df = df.merge(pos, on="employee_id", how="left")
+
+    # Classification
+    df["classification"] = df.get("department_name", pd.Series()).apply(_classify)
+
+    # Region — derived from department.  If we get locations with city/state, use that.
+    # For now: "Permian" if department includes "Permian" or "Field", else "Houston"
+    def _region(row):
+        dept = str(row.get("department_name", "")).lower() if pd.notna(row.get("department_name")) else ""
+        job = str(row.get("job_title", "")).lower() if pd.notna(row.get("job_title")) else ""
+        if "permian" in dept or "permian" in job:
+            return "Permian"
+        return "Houston"  # default — everyone's HQ'd in Tomball
+
+    df["region"] = df.apply(_region, axis=1)
+
+    cols = [
+        "employee_id", "first_name", "last_name", "email", "status",
+        "hire_date", "employment_status", "worker_type",
+        "job_title", "department_id", "department_name", "supervisor_id",
+        "classification", "region",
+    ]
+    for c in cols:
+        if c not in df.columns:
+            df[c] = None
+    return df[cols]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Sync
 # ═══════════════════════════════════════════════════════════════════════
 
 
 def sync_all():
-    """Pull all Insperity endpoints and upsert into the warehouse."""
     start = time.monotonic()
     log.info("Insperity sync starting")
 
     if not INSPERITY_API_KEY:
-        log.warning("INSPERITY_API_KEY not set — skipping all pulls")
+        log.warning("INSPERITY_API_KEY not set — skipping")
         return
 
-    engine = _get_engine()
+    engine = _engine()
 
-    tasks = [
-        ("employees", pull_employees, ["employee_id"]),
-        ("employment", pull_employment, ["employee_id"]),
-        ("positions", pull_positions, ["employee_id"]),
-        ("departments", pull_departments, ["department_id"]),
-        ("locations", pull_locations, ["location_id"]),
-        ("communication", pull_communication, ["employee_id"]),
-    ]
+    # Pull raw tables
+    log.info("Pulling endpoints...")
+    emp = pull_employees()
+    empmt = pull_employment()
+    pos = pull_positions()
+    depts = pull_departments()
+    locs = pull_locations()
 
-    for table, puller, pks in tasks:
-        try:
-            df = puller()
-            if not df.empty:
-                upsert_df(engine, table, df, pks)
-            else:
-                log.info("  %s: no data returned", table)
-        except Exception as exc:
-            log.error("  %s: FAILED — %s", table, exc)
+    # Persist raw tables (useful for debugging)
+    _fresh_table(engine, "employees", emp)
+    _fresh_table(engine, "employment", empmt)
+    _fresh_table(engine, "positions", pos)
+    _fresh_table(engine, "departments", depts)
+    _fresh_table(engine, "locations", locs)
+
+    # Build & persist unified worker view
+    workers = _build_worker_view(emp, empmt, pos, depts, locs)
+    _fresh_table(engine, "workers", workers)
+
+    # Log the breakdown Mike wants to see
+    if not workers.empty:
+        direct = int((workers["classification"] == "direct").sum())
+        indirect = int((workers["classification"] == "indirect").sum())
+        total = len(workers)
+        ratio = f"{direct}:{indirect}" if indirect else str(direct)
+        log.info("Headcount: %d total  |  Direct %d  |  Indirect %d  |  Ratio %s",
+                 total, direct, indirect, ratio)
+
+        # Regional breakdown
+        for region in sorted(workers["region"].dropna().unique()):
+            r_df = workers[workers["region"] == region]
+            log.info("  %s: %d total  (Direct %d / Indirect %d)",
+                     region, len(r_df),
+                     int((r_df["classification"] == "direct").sum()),
+                     int((r_df["classification"] == "indirect").sum()))
 
     elapsed = time.monotonic() - start
     log.info("Insperity sync finished in %.1fs", elapsed)

@@ -8,15 +8,21 @@ classification and region mapping, then upserts into the Railway warehouse.
 from __future__ import annotations
 
 import os
+import sys
 import time
 import json
 import logging
 from datetime import datetime, timezone
 
+# Make repo root importable (droplet doesn't pip install the package)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import requests
 import pandas as pd
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
+
+from data.insperity_classification import CLASSIFICATION
 
 load_dotenv()
 
@@ -250,25 +256,14 @@ def pull_locations():
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Unified worker view
-DIRECT_DEPT_IDS = {"FIELD", "FIELD1", "SHOP", "MAINT", "INSTALL", "OPERATIONS"}
-DIRECT_DEPT_NAMES = {"FIELD", "SHOP", "MAINTENANCE", "INSTALLATION", "OPERATIONS"}
-
-
-def _classify(department_id, department_name) -> str:
-    """Direct = field/operational.  Indirect = SGA / support."""
-    # Check department name first (from the nested position object)
-    if department_name:
-        name = str(department_name).strip().upper()
-        if name in DIRECT_DEPT_NAMES:
-            return "direct"
-        # Also check if any keyword is IN the name
-        for kw in ("FIELD", "SHOP", "OPERATIONS"):
-            if kw in name:
-                return "direct"
-    # Fall back to department ID
-    if department_id is not None and str(department_id).strip().upper() in DIRECT_DEPT_IDS:
-        return "direct"
-    return "indirect"
+def _classify(last_name, first_name) -> str:
+    """Override Insperity's department with Vrutika's classification."""
+    key = f"{last_name} {first_name}".strip().upper()
+    if key in CLASSIFICATION:
+        return CLASSIFICATION[key]
+    # Log unknowns so Vrutika can classify them
+    log.info("  unclassified: %s", key)
+    return "indirect"  # default — safe assumption for unknown people
 
 
 def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
@@ -290,9 +285,9 @@ def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
     if not pos.empty:
         df = df.merge(pos, on="person_id", how="left")
 
-    # Classification
+    # Classification — Vrutika's list overrides Insperity
     df["classification"] = df.apply(
-        lambda r: _classify(r.get("department_id"), r.get("department_name")), axis=1
+        lambda r: _classify(r.get("last_name"), r.get("first_name")), axis=1
     )
 
     # Region — from employee's city/state, falls back to Houston

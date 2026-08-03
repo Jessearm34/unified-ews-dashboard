@@ -3,12 +3,12 @@
 The sync worker (pull_insperity.py) runs on the DigitalOcean droplet every 10 min,
 pulling from Insperity's API and upserting into these warehouse tables:
 
-    insperity_employees    — employee_id, first_name, last_name, email, status
-    insperity_employment   — employee_id, hire_date, employment_status, worker_type
-    insperity_positions    — employee_id, job_title, department_id, department_name, supervisor_id
+    insperity_employees    — person_id, first_name, last_name, email, status
+    insperity_employment   — person_id, hire_date, employment_status
+    insperity_positions    — person_id, job_title, department_id, department_name
     insperity_departments  — department_id, department_name
     insperity_locations    — location_id, location_name
-    insperity_communication — employee_id, email, phone
+    insperity_workers      — person_id, first_name, last_name, status, hire_date, ...
 """
 
 from __future__ import annotations

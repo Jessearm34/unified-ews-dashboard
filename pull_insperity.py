@@ -27,7 +27,7 @@ load_dotenv()
 #  Config
 # ═══════════════════════════════════════════════════════════════════════
 
-INSPERITY_BASE = os.getenv("INSPERITY_BASE_URL", "https://api.insperity.com/v1")
+INSPERITY_BASE = os.getenv("INSPERITY_BASE_URL", "https://api.insperity.com")
 INSPERITY_CLIENT_ID = os.getenv("INSPERITY_CLIENT_ID", "")
 INSPERITY_API_KEY = os.getenv("INSPERITY_API_KEY", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -79,10 +79,8 @@ def _fresh_table(engine, table: str, df: pd.DataFrame):
 
 
 def _api_get(endpoint: str, version: str = "v1") -> list[dict]:
-    url = f"{INSPERITY_BASE}/public/company/{INSPERITY_CLIENT_ID}/{endpoint}/{version}"
+    url = f"{INSPERITY_BASE}/public/company/{INSPERITY_CLIENT_ID}/{endpoint}/{version}?apikey={INSPERITY_API_KEY}"
     headers = {
-        "X-Client-Id": INSPERITY_CLIENT_ID,
-        "X-API-Key": INSPERITY_API_KEY,
         "Accept": "application/json",
     }
     all_items = []

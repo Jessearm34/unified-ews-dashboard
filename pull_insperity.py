@@ -135,15 +135,49 @@ def _to_df(raw, col_map):
 
 
 def pull_employees():
-    """GET employees/v2 — returns personId, givenName, familyName, email, status."""
+    """GET employees/v2 — flatten nested communication into email."""
     raw = _api_get("employees", "v2")
-    return _to_df(raw, {
+    if not raw:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(raw)
+
+    # Flatten nested communication object
+    if "_communication_raw" not in df.columns:
+        df["_communication_raw"] = df.get("communication", None)
+
+    # Extract workEmail from the nested dict
+    def _extract_email(val):
+        if isinstance(val, dict):
+            return val.get("workEmail") or val.get("email") or val.get("homeEmail")
+        return None
+
+    def _extract_city(val):
+        if isinstance(val, dict):
+            addr = val.get("homeAddress", {})
+            if isinstance(addr, dict):
+                return addr.get("city")
+        return None
+
+    def _extract_state(val):
+        if isinstance(val, dict):
+            addr = val.get("homeAddress", {})
+            if isinstance(addr, dict):
+                return addr.get("state")
+        return None
+
+    df["email"] = df["_communication_raw"].apply(_extract_email)
+    df["city"] = df.get("homeAddress", pd.Series()).apply(_extract_city)
+    df["state"] = df.get("homeAddress", pd.Series()).apply(_extract_state)
+
+    return _to_df(df.to_dict("records"), {
         "personId": "person_id",
         "givenName": "first_name",
         "familyName": "last_name",
         "email": "email",
         "status": "status",
-        "communication": "_communication_raw",  # nested object with email/phone
+        "city": "city",
+        "state": "state",
     })
 
 
@@ -234,13 +268,35 @@ def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
         lambda r: _classify(r.get("department_id"), r.get("department_name")), axis=1
     )
 
-    # Region — default Houston for now
-    df["region"] = "Houston"
+    # Region — from employee's city/state, falls back to Houston
+    def _region(row):
+        city = str(row.get("city", "")).strip().upper() if pd.notna(row.get("city")) else ""
+        state = str(row.get("state", "")).strip().upper() if pd.notna(row.get("state")) else ""
+        if not city and not state:
+            return "Houston"
+        if state in ("TX", "TEXAS"):
+            return "Texas"
+        if state in ("WY", "WYOMING"):
+            return "Wyoming"
+        if state in ("UT", "UTAH"):
+            return "Utah"
+        if state in ("NM", "NEW MEXICO"):
+            return "New Mexico"
+        if state in ("CO", "COLORADO"):
+            return "Colorado"
+        if state in ("PA", "PENNSYLVANIA"):
+            return "Pennsylvania"
+        if state in ("OH", "OHIO"):
+            return "Ohio"
+        return city or "Other"
+
+    df["region"] = df.apply(_region, axis=1)
 
     cols = [
         "person_id", "first_name", "last_name", "status",
         "hire_date", "employment_status", "job_title",
-        "department_id", "department_name", "classification", "region",
+        "department_id", "department_name", "classification",
+        "city", "state", "region",
     ]
     for c in cols:
         if c not in df.columns:

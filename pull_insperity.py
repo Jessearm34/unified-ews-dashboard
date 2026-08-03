@@ -3,10 +3,6 @@
 Pulls employee roster, employment, positions, departments, and locations
 from Insperity's API.  Builds a unified worker view with Direct/Indirect
 classification and region mapping, then upserts into the Railway warehouse.
-
-Mike Skrbich wants: headcount broken down by Direct (field) vs Indirect (SGA),
-plus a regional breakdown.  Classification is driven by department name —
-"Field Operators" and similar → Direct, everything else → Indirect.
 """
 
 from __future__ import annotations
@@ -35,11 +31,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 TABLE_PREFIX = "insperity_"
 
-# Department names that map to Direct (field / operational)
-DIRECT_DEPARTMENTS = {
-    "field operators", "field operations", "field", "operations",
-    "manufacturing", "shop", "installation", "maintenance",
-}
+# Department IDs that map to Direct (field / operational)
+DIRECT_DEPT_IDS = {"FIELD", "FIELD1", "SHOP", "MAINT", "INSTALL", "OPERATIONS"}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("insperity-sync")
@@ -62,7 +55,6 @@ def _engine():
 
 
 def _fresh_table(engine, table: str, df: pd.DataFrame):
-    """Replace the whole table in a transaction."""
     if df.empty:
         log.info("  %s: no rows — skipping", table)
         return
@@ -80,30 +72,45 @@ def _fresh_table(engine, table: str, df: pd.DataFrame):
 
 
 def _api_get(endpoint: str, version: str = "v1") -> list[dict]:
+    """GET an Insperity endpoint, return the unwrapped item list.
+
+    Insperity nests results in wrapper keys like {"employees": [...]},
+    {"items": [...]}, or returns a flat list.
+    """
     url = f"{INSPERITY_BASE}/public/company/{INSPERITY_CLIENT_ID}/{endpoint}/{version}?apikey={INSPERITY_API_KEY}"
-    headers = {
-        "Accept": "application/json",
-    }
+    headers = {"Accept": "application/json"}
     all_items = []
     params = None
 
     while url:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
         if resp.status_code == 404:
-            log.warning("  endpoint %s/%s returned 404 — skipping", endpoint, version)
+            log.warning("  %s/%s returned 404 — skipping", endpoint, version)
             return []
         resp.raise_for_status()
         data = resp.json()
-        log.info("  %s/%s: HTTP %s, body: %s", endpoint, version, resp.status_code,
-                  json.dumps(data)[:300] if not isinstance(data, list) else f"[{len(data)} items]")
 
+        # Unwrap Insperity's nested response envelope
         if isinstance(data, list):
-            all_items.extend(data)
+            items = data
         elif isinstance(data, dict):
-            items = data.get("data") or data.get("results") or data.get("items") or []
-            all_items.extend(items)
+            # Try all common wrapper keys
+            items = (data.get("employees")
+                     or data.get("items")
+                     or data.get("data")
+                     or data.get("results")
+                     or [])
+        else:
+            items = []
+
+        all_items.extend(items)
+        log.info("  %s/%s: got %d items (total %d so far)", endpoint, version,
+                 len(items), len(all_items))
+
+        # Pagination
+        if isinstance(data, dict):
             url = data.get("next") or data.get("nextPage") or data.get("next_page") or None
-            params = None  # baked into next URL
+            params = None
         else:
             url = None
 
@@ -111,120 +118,129 @@ def _api_get(endpoint: str, version: str = "v1") -> list[dict]:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Pullers
+#  Pullers  (field names matched to actual Insperity API responses)
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def _to_df(raw, mapping):
+def _to_df(raw, col_map):
+    """Build a DataFrame from raw dicts, renaming columns per col_map."""
     if not raw:
         return pd.DataFrame()
     df = pd.DataFrame(raw)
-    df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
-    for col in set(mapping.values()):
+    df = df.rename(columns=col_map)
+    for col in set(col_map.values()):
         if col not in df.columns:
             df[col] = None
-    return df[list(dict.fromkeys(mapping.values()))]
+    return df[list(dict.fromkeys(col_map.values()))]
 
 
 def pull_employees():
-    return _to_df(
-        _api_get("employees", "v2"),
-        {"employeeId": "employee_id", "id": "employee_id",
-         "firstName": "first_name", "lastName": "last_name",
-         "email": "email", "status": "status"},
-    )
+    """GET employees/v2 — returns personId, givenName, familyName, email, status."""
+    raw = _api_get("employees", "v2")
+    return _to_df(raw, {
+        "personId": "person_id",
+        "givenName": "first_name",
+        "familyName": "last_name",
+        "email": "email",
+        "status": "status",
+        "communication": "_communication_raw",  # nested object with email/phone
+    })
 
 
 def pull_employment():
-    return _to_df(
-        _api_get("employeesemployment"),
-        {"employeeId": "employee_id", "hireDate": "hire_date",
-         "employmentStatus": "employment_status",
-         "workerType": "worker_type", "terminationDate": "termination_date"},
-    )
+    """GET employeesemployment/v1 — hire date, worker type, status."""
+    raw = _api_get("employeesemployment")
+    return _to_df(raw, {
+        "personId": "person_id",
+        "hireDate": "hire_date",
+        "employmentStatus": "employment_status",
+        "employmentStatusReason": "status_reason",
+        "clientEmployeeNumber": "employee_number",
+    })
 
 
 def pull_positions():
-    return _to_df(
-        _api_get("employeesposition"),
-        {"employeeId": "employee_id", "jobTitle": "job_title",
-         "departmentId": "department_id", "departmentName": "department_name",
-         "supervisorId": "supervisor_id", "supervisorName": "supervisor_name"},
-    )
+    """GET employeesposition/v1 — job title, departmentId, supervisor."""
+    raw = _api_get("employeesposition")
+    return _to_df(raw, {
+        "personId": "person_id",
+        "jobTitle": "job_title",
+        "departmentId": "department_id",
+        "supervisorId": "supervisor_id",
+        "supervisorName": "supervisor_name",
+    })
 
 
 def pull_departments():
-    return _to_df(
-        _api_get("departments"),
-        {"departmentId": "department_id", "id": "department_id",
-         "name": "department_name", "departmentName": "department_name"},
-    )
+    """GET departments/v1 — id, description."""
+    raw = _api_get("departments")
+    return _to_df(raw, {
+        "id": "department_id",
+        "description": "department_name",
+    })
 
 
 def pull_locations():
-    return _to_df(
-        _api_get("locations"),
-        {"locationId": "location_id", "id": "location_id",
-         "name": "location_name", "locationName": "location_name",
-         "city": "city", "state": "state"},
-    )
+    """GET locations/v1."""
+    raw = _api_get("locations")
+    return _to_df(raw, {
+        "id": "location_id",
+        "description": "location_name",
+        "city": "city",
+        "state": "state",
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Unified worker view  (the dashboard reads from this single table)
+#  Unified worker view
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def _classify(department_name: str | None) -> str:
+def _classify(department_id: str | None, department_name: str | None) -> str:
     """Direct = field/operational.  Indirect = SGA / support."""
-    if pd.isna(department_name) or not department_name:
-        return "indirect"
-    name = str(department_name).strip().lower()
-    for kw in DIRECT_DEPARTMENTS:
-        if kw in name:
-            return "direct"
+    if department_id and str(department_id).strip().upper() in DIRECT_DEPT_IDS:
+        return "direct"
+    if department_name and str(department_name).strip().upper() in DIRECT_DEPT_IDS:
+        return "direct"
     return "indirect"
 
 
 def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
-    """Join all Insperity tables into one worker row with Direct/Indirect flag."""
+    """Join into one worker row with Direct/Indirect classification."""
     if emp.empty:
         return pd.DataFrame(columns=[
-            "employee_id", "first_name", "last_name", "email", "status",
-            "hire_date", "employment_status", "worker_type",
-            "job_title", "department_id", "department_name", "supervisor_id",
-            "classification", "region",
+            "person_id", "first_name", "last_name", "status",
+            "hire_date", "employment_status", "job_title",
+            "department_id", "department_name", "classification", "region",
         ])
 
     df = emp.copy()
 
     # Merge employment
     if not empmt.empty:
-        df = df.merge(empmt, on="employee_id", how="left")
+        df = df.merge(empmt, on="person_id", how="left")
 
-    # Merge positions (job title, department, supervisor)
+    # Merge positions
     if not pos.empty:
-        df = df.merge(pos, on="employee_id", how="left")
+        df = df.merge(pos, on="person_id", how="left")
+
+    # Map department ID → name
+    if not depts.empty and "department_id" in df.columns:
+        dept_map = dict(zip(depts["department_id"], depts["department_name"]))
+        df["department_name"] = df["department_id"].map(dept_map).fillna(df.get("department_name", None))
 
     # Classification
-    df["classification"] = df.get("department_name", pd.Series()).apply(_classify)
+    df["classification"] = df.apply(
+        lambda r: _classify(r.get("department_id"), r.get("department_name")), axis=1
+    )
 
-    # Region — derived from department.  If we get locations with city/state, use that.
-    # For now: "Permian" if department includes "Permian" or "Field", else "Houston"
-    def _region(row):
-        dept = str(row.get("department_name", "")).lower() if pd.notna(row.get("department_name")) else ""
-        job = str(row.get("job_title", "")).lower() if pd.notna(row.get("job_title")) else ""
-        if "permian" in dept or "permian" in job:
-            return "Permian"
-        return "Houston"  # default — everyone's HQ'd in Tomball
-
-    df["region"] = df.apply(_region, axis=1)
+    # Region — default Houston for now
+    df["region"] = "Houston"
 
     cols = [
-        "employee_id", "first_name", "last_name", "email", "status",
-        "hire_date", "employment_status", "worker_type",
-        "job_title", "department_id", "department_name", "supervisor_id",
-        "classification", "region",
+        "person_id", "first_name", "last_name", "status",
+        "hire_date", "employment_status", "job_title",
+        "department_id", "department_name", "classification", "region",
     ]
     for c in cols:
         if c not in df.columns:
@@ -247,7 +263,6 @@ def sync_all():
 
     engine = _engine()
 
-    # Pull raw tables
     log.info("Pulling endpoints...")
     emp = pull_employees()
     empmt = pull_employment()
@@ -255,7 +270,7 @@ def sync_all():
     depts = pull_departments()
     locs = pull_locations()
 
-    # Persist raw tables (useful for debugging)
+    # Persist raw tables
     _fresh_table(engine, "employees", emp)
     _fresh_table(engine, "employment", empmt)
     _fresh_table(engine, "positions", pos)
@@ -266,7 +281,7 @@ def sync_all():
     workers = _build_worker_view(emp, empmt, pos, depts, locs)
     _fresh_table(engine, "workers", workers)
 
-    # Log the breakdown Mike wants to see
+    # Headcount breakdown
     if not workers.empty:
         direct = int((workers["classification"] == "direct").sum())
         indirect = int((workers["classification"] == "indirect").sum())
@@ -274,14 +289,6 @@ def sync_all():
         ratio = f"{direct}:{indirect}" if indirect else str(direct)
         log.info("Headcount: %d total  |  Direct %d  |  Indirect %d  |  Ratio %s",
                  total, direct, indirect, ratio)
-
-        # Regional breakdown
-        for region in sorted(workers["region"].dropna().unique()):
-            r_df = workers[workers["region"] == region]
-            log.info("  %s: %d total  (Direct %d / Indirect %d)",
-                     region, len(r_df),
-                     int((r_df["classification"] == "direct").sum()),
-                     int((r_df["classification"] == "indirect").sum()))
 
     elapsed = time.monotonic() - start
     log.info("Insperity sync finished in %.1fs", elapsed)

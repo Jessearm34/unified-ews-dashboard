@@ -194,18 +194,37 @@ def pull_employment():
 
 
 def pull_positions():
-    """GET employeesposition/v1 — job title, departmentId, supervisor."""
+    """GET employeesposition/v1 — flatten nested 'position' dict."""
     raw = _api_get("employeesposition")
-    if raw:
-        log.info("  positions sample keys: %s", list(raw[0].keys())[:20] if raw else "empty")
-        if raw and "position" in raw[0]:
-            log.info("  positions[0].position: %s", json.dumps(raw[0]["position"])[:300])
-    return _to_df(raw, {
+    if not raw:
+        return pd.DataFrame()
+
+    # Flatten the nested "position" object into top-level columns
+    flat = []
+    for r in raw:
+        row = {k: v for k, v in r.items() if k != "position"}
+        pos = r.get("position") or {}
+        if isinstance(pos, dict):
+            row["jobTitle"] = pos.get("jobTitle")
+            row["departmentId"] = pos.get("departmentId")
+            row["department"] = pos.get("department")
+            row["supervisorId"] = pos.get("supervisorId")
+            row["supervisor"] = pos.get("supervisor")
+            row["locationId"] = pos.get("locationId")
+            row["location"] = pos.get("location")
+            row["jobCategory"] = pos.get("jobCategory")
+            row["jobFunction"] = pos.get("jobFunction")
+        flat.append(row)
+
+    return _to_df(flat, {
         "personId": "person_id",
         "jobTitle": "job_title",
         "departmentId": "department_id",
+        "department": "department_name",
         "supervisorId": "supervisor_id",
-        "supervisorName": "supervisor_name",
+        "supervisor": "supervisor_name",
+        "jobCategory": "job_category",
+        "jobFunction": "job_function",
     })
 
 
@@ -231,14 +250,23 @@ def pull_locations():
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Unified worker view
-# ═══════════════════════════════════════════════════════════════════════
+DIRECT_DEPT_IDS = {"FIELD", "FIELD1", "SHOP", "MAINT", "INSTALL", "OPERATIONS"}
+DIRECT_DEPT_NAMES = {"FIELD", "SHOP", "MAINTENANCE", "INSTALLATION", "OPERATIONS"}
 
 
-def _classify(department_id: str | None, department_name: str | None) -> str:
+def _classify(department_id, department_name) -> str:
     """Direct = field/operational.  Indirect = SGA / support."""
-    if department_id and str(department_id).strip().upper() in DIRECT_DEPT_IDS:
-        return "direct"
-    if department_name and str(department_name).strip().upper() in DIRECT_DEPT_IDS:
+    # Check department name first (from the nested position object)
+    if department_name:
+        name = str(department_name).strip().upper()
+        if name in DIRECT_DEPT_NAMES:
+            return "direct"
+        # Also check if any keyword is IN the name
+        for kw in ("FIELD", "SHOP", "OPERATIONS"):
+            if kw in name:
+                return "direct"
+    # Fall back to department ID
+    if department_id is not None and str(department_id).strip().upper() in DIRECT_DEPT_IDS:
         return "direct"
     return "indirect"
 
@@ -261,11 +289,6 @@ def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
     # Merge positions
     if not pos.empty:
         df = df.merge(pos, on="person_id", how="left")
-
-    # Map department ID → name
-    if not depts.empty and "department_id" in df.columns:
-        dept_map = dict(zip(depts["department_id"], depts["department_name"]))
-        df["department_name"] = df["department_id"].map(dept_map).fillna(df.get("department_name", None))
 
     # Classification
     df["classification"] = df.apply(

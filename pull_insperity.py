@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import time
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -93,6 +94,8 @@ def _api_get(endpoint: str, version: str = "v1") -> list[dict]:
             return []
         resp.raise_for_status()
         data = resp.json()
+        log.info("  %s/%s: HTTP %s, body: %s", endpoint, version, resp.status_code,
+                  json.dumps(data)[:300] if not isinstance(data, list) else f"[{len(data)} items]")
 
         if isinstance(data, list):
             all_items.extend(data)

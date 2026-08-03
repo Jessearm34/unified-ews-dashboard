@@ -198,6 +198,8 @@ def pull_positions():
     raw = _api_get("employeesposition")
     if raw:
         log.info("  positions sample keys: %s", list(raw[0].keys())[:20] if raw else "empty")
+        if raw and "position" in raw[0]:
+            log.info("  positions[0].position: %s", json.dumps(raw[0]["position"])[:300])
     return _to_df(raw, {
         "personId": "person_id",
         "jobTitle": "job_title",

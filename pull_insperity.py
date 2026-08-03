@@ -196,6 +196,8 @@ def pull_employment():
 def pull_positions():
     """GET employeesposition/v1 — job title, departmentId, supervisor."""
     raw = _api_get("employeesposition")
+    if raw:
+        log.info("  positions sample keys: %s", list(raw[0].keys())[:20] if raw else "empty")
     return _to_df(raw, {
         "personId": "person_id",
         "jobTitle": "job_title",

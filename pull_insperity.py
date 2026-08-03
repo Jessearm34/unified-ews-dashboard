@@ -256,14 +256,18 @@ def pull_locations():
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Unified worker view
-def _classify(last_name, first_name) -> str:
+def _classify(last_name, first_name, department_name=None) -> str:
     """Override Insperity's department with Vrutika's classification."""
     key = f"{last_name} {first_name}".strip().upper()
     if key in CLASSIFICATION:
         return CLASSIFICATION[key]
-    # Log unknowns so Vrutika can classify them
+    # Fall back to department for people Vrutika hasn't classified yet
+    if department_name:
+        dept = str(department_name).strip().upper()
+        if dept in ("FIELD", "SHOP", "FIELD1", "OPERATIONS"):
+            return "direct"
     log.info("  unclassified: %s", key)
-    return "indirect"  # default — safe assumption for unknown people
+    return "indirect"
 
 
 def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
@@ -287,7 +291,7 @@ def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
 
     # Classification — Vrutika's list overrides Insperity
     df["classification"] = df.apply(
-        lambda r: _classify(r.get("last_name"), r.get("first_name")), axis=1
+        lambda r: _classify(r.get("last_name"), r.get("first_name"), r.get("department_name")), axis=1
     )
 
     # Region — from employee's city/state, falls back to Houston

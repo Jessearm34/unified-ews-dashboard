@@ -26,8 +26,7 @@
 <aside class="sidebar">
 	<div>
 		<div class="brand">
-			<span class="mark">▦</span>
-			<div class="name">EWS<small>Unified Dashboard</small></div>
+			<div class="name">EWS<span>Dashboard</span></div>
 		</div>
 		<nav class="nav">
 			<a
@@ -36,50 +35,26 @@
 				onclick={() => navigateTo(null, null)}
 				role="button"
 				tabindex="0"
-			>▦ Overview</a>
+			>Overview</a>
 
 			{#each platforms as pf (pf.key)}
-				{#if openPlatform === pf.key}
-					<details class="nav-group" open>
-						<summary onclick={() => togglePlatform(pf.key)}>
-							<span>{pf.icon} {pf.label}</span>
-							<span class="arrow">▶</span>
-						</summary>
-						<div class="sub">
-							{#each pf.sections as sec (sec.key)}
-								<a
-									class:active={currentPlatform === pf.key && currentSection === sec.key}
-									onclick={() => navigateTo(pf.key, sec.key)}
-									role="button"
-									tabindex="0"
-								>{sec.icon} {sec.label}</a>
-							{/each}
-						</div>
-					</details>
-				{:else}
-					<details class="nav-group">
-						<summary onclick={() => togglePlatform(pf.key)}>
-							<span>{pf.icon} {pf.label}</span>
-							<span class="arrow">▶</span>
-						</summary>
-						<div class="sub">
-							{#each pf.sections as sec (sec.key)}
-								<a
-									class:active={currentPlatform === pf.key && currentSection === sec.key}
-									onclick={() => navigateTo(pf.key, sec.key)}
-									role="button"
-									tabindex="0"
-								>{sec.icon} {sec.label}</a>
-							{/each}
-						</div>
-					</details>
-				{/if}
+				<details class="nav-group" open={openPlatform === pf.key}>
+					<summary onclick={() => togglePlatform(pf.key)}>
+						{pf.label}
+					</summary>
+					<div class="sub">
+						{#each pf.sections as sec (sec.key)}
+							<a
+								class:active={currentPlatform === pf.key && currentSection === sec.key}
+								onclick={() => navigateTo(pf.key, sec.key)}
+								role="button"
+								tabindex="0"
+							>{sec.label}</a>
+						{/each}
+					</div>
+				</details>
 			{/each}
 		</nav>
 	</div>
-	<div class="sidebar-foot">Powered by data · EWS</div>
+	<div class="sidebar-foot">EWS</div>
 </aside>
-
-<style>
-	.sidebar a.active { background: var(--accent) !important; color: #fff !important; opacity: 1 !important; }
-</style>

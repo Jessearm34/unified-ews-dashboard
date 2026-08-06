@@ -39,13 +39,14 @@ def _layout(fig: go.Figure, height: int = 300) -> go.Figure:
         height=height,
         margin=dict(l=10, r=10, t=30, b=10),
         font=dict(family="Inter, system-ui, sans-serif", size=11, color="#8a8f98"),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141516",
+        plot_bgcolor="#141516",
         showlegend=fig.layout.showlegend,
         title=None,
         uniformtext=dict(minsize=9, mode="hide"),
         hoverlabel=dict(bgcolor="#191a1b", font_size=12, font_family="Inter, system-ui, sans-serif",
                         font_color="#d0d6e0", bordercolor="rgba(255,255,255,0.1)"),
+        colorway=["#5e6ad2", "#27a644", "#f59e0b", "#dc2626", "#7170ff", "#0ea5e9", "#8b5cf6", "#ec4899"],
     )
     fig.update_xaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.06)",
                      tickfont=dict(color="#62666d"))

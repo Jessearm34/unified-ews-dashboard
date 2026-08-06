@@ -38,20 +38,18 @@ def _layout(fig: go.Figure, height: int = 300) -> go.Figure:
         template=None,
         height=height,
         margin=dict(l=10, r=10, t=30, b=10),
-        font=dict(family="Inter, system-ui, sans-serif", size=11, color="#8a8f98"),
-        paper_bgcolor="#141516",
-        plot_bgcolor="#141516",
+        font=dict(family="Inter, system-ui, sans-serif", size=11, color="#6b7280"),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
         showlegend=fig.layout.showlegend,
         title=None,
         uniformtext=dict(minsize=9, mode="hide"),
-        hoverlabel=dict(bgcolor="#191a1b", font_size=12, font_family="Inter, system-ui, sans-serif",
-                        font_color="#d0d6e0", bordercolor="rgba(255,255,255,0.1)"),
-        colorway=["#5e6ad2", "#27a644", "#f59e0b", "#dc2626", "#7170ff", "#0ea5e9", "#8b5cf6", "#ec4899"],
+        hoverlabel=dict(bgcolor="#1a1a2e", font_size=12, font_family="Inter, system-ui, sans-serif",
+                        font_color="#fff"),
+        colorway=["#2563eb", "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#4f46e5"],
     )
-    fig.update_xaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.06)",
-                     tickfont=dict(color="#62666d"))
-    fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.06)",
-                     tickfont=dict(color="#62666d"))
+    fig.update_xaxes(gridcolor="#f3f4f6", zerolinecolor="#e5e7eb", tickfont=dict(color="#9ca3af"))
+    fig.update_yaxes(gridcolor="#f3f4f6", zerolinecolor="#e5e7eb", tickfont=dict(color="#9ca3af"))
     return fig
 
 

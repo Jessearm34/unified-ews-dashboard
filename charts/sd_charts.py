@@ -29,17 +29,20 @@ def _rgba(hex_color: str, alpha: float) -> str:
 
 def _layout(fig: go.Figure, height: int = 300) -> go.Figure:
     fig.update_layout(
-        template="plotly_dark",
+        template=None,
         height=height,
         margin=dict(l=20, r=10, t=30, b=10),
         font=dict(family="Inter, system-ui, sans-serif", size=11, color="#8a8f98"),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=fig.layout.showlegend, title=None,
         uniformtext=dict(minsize=9, mode="hide"),
-        hoverlabel=dict(bgcolor="#141516", font_size=12, font_family="Inter, system-ui, sans-serif"),
+        hoverlabel=dict(bgcolor="#191a1b", font_size=12, font_family="Inter, system-ui, sans-serif",
+                        font_color="#d0d6e0", bordercolor="rgba(255,255,255,0.1)"),
     )
-    fig.update_xaxes(gridcolor="rgba(255,255,255,0.06)", zerolinecolor="rgba(255,255,255,0.08)", tickfont=dict(color="#8a8f98"))
-    fig.update_yaxes(gridcolor="rgba(255,255,255,0.06)", zerolinecolor="rgba(255,255,255,0.08)", tickfont=dict(color="#8a8f98"))
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.06)",
+                     tickfont=dict(color="#62666d"))
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.06)",
+                     tickfont=dict(color="#62666d"))
     return fig
 
 

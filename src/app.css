@@ -137,8 +137,9 @@ a { color: var(--accent); text-decoration: none; }
 .panel h3 .dot { width: 6px; height: 6px; border-radius: 2px; display: inline-block; }
 .panel-scroll { max-height: 380px; overflow-y: auto; }
 
-.chart-container { width: 100%; min-height: 260px; }
-.chart-container .js-plotly-plot, .chart-container .plot-container { width: 100% !important; }
+.chart-container { width: 100%; min-height: 260px; overflow: visible; }
+.chart-container .js-plotly-plot, .chart-container .plotly-graph-div { width: 100% !important; overflow: visible !important; }
+.chart-container svg { overflow: visible !important; }
 .chart-empty { display: flex; align-items: center; justify-content: center; height: 240px; color: var(--ink-dim); border: 1px dashed var(--border); border-radius: var(--radius); font-size: 12px; }
 
 /* ── Tables ── */

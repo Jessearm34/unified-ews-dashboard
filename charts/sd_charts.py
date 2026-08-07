@@ -27,11 +27,11 @@ def _rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
-def _layout(fig: go.Figure, height: int = 320) -> go.Figure:
+def _layout(fig: go.Figure, height: int = 340) -> go.Figure:
     fig.update_layout(
         template=None,
         height=height,
-        margin=dict(l=50, r=15, t=30, b=40),
+        margin=dict(l=55, r=15, t=30, b=45),
         font=dict(family="Inter, system-ui, sans-serif", size=11, color="#8b949e"),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=fig.layout.showlegend, title=None,
@@ -39,12 +39,14 @@ def _layout(fig: go.Figure, height: int = 320) -> go.Figure:
         hoverlabel=dict(bgcolor="#161b22", font_size=12, font_family="Inter, system-ui, sans-serif",
                         font_color="#e6edf3", bordercolor="#30363d"),
         colorway=["#58a6ff", "#3fb950", "#d29922", "#f85149", "#a371f7", "#79c0ff", "#f778ba", "#7ee787"],
+        dragmode=False,
     )
     fig.update_xaxes(gridcolor="rgba(48,54,61,0.3)", zerolinecolor="rgba(48,54,61,0.4)",
                      tickfont=dict(color="#6e7681", size=10), automargin=True,
-                     ticklabelposition="outside")
+                     ticklabelposition="outside", tickangle=0, nticks=8)
     fig.update_yaxes(gridcolor="rgba(48,54,61,0.3)", zerolinecolor="rgba(48,54,61,0.4)",
-                     tickfont=dict(color="#6e7681", size=10), automargin=True)
+                     tickfont=dict(color="#6e7681", size=10), automargin=True,
+                     nticks=6)
     return fig
 
 

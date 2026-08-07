@@ -20,8 +20,10 @@ except ImportError:
     from visualize_fasthtml.data import qb_data as D
 
 # Palette echoing the executive-dashboard mock.
-ACCENT = "#2563eb"
-SEQ = ["#2563eb", "#0e7490", "#7c3aed", "#16a34a", "#ea580c", "#db2777", "#0891b2", "#64748b"]
+ACCENT = "#58a6ff"
+SEQ = ["#58a6ff", "#3fb950", "#d29922", "#a371f7", "#f778ba", "#79c0ff", "#f85149", "#7ee787"]
+MARKER_DIM = "#6e7681"
+MARKER_LINE = "rgba(48,54,61,0.6)"
 
 _PLOT_CONFIG = {"displayModeBar": False, "displaylogo": False, "responsive": True}
 _ids = iter(lambda: f'chart-{random.randrange(10_000_000, 99_999_999)}', None)
@@ -134,8 +136,8 @@ def trend(invoices: pd.DataFrame, metric: str, compare_invoices: pd.DataFrame | 
             fig.add_trace(go.Scatter(
                 x=cdf["Month"], y=cdf["value"],
                 mode="lines+markers",
-                line=dict(color="#94a3b8", width=2, dash="dash"),
-                marker=dict(size=5, color="#94a3b8"),
+                line=dict(color="#6e7681", width=2, dash="dash"),
+                marker=dict(size=5, color="#6e7681"),
                 name="Prev period",
                 hovertemplate=f"%{{x|%b %Y}}<br>{hover_fmt}<extra></extra>",
             ))
@@ -174,7 +176,7 @@ def revenue_by_city(invoices: pd.DataFrame) -> str:
             rotation=135,
             textfont=dict(size=10),
             automargin=True,
-            marker=dict(colors=SEQ, line=dict(color="white", width=1)),
+            marker=dict(colors=SEQ, line=dict(color="rgba(48,54,61,0.6)", width=1)),
             hovertemplate="%{label}<br>$%{value:,.2f} (%{percent})<extra></extra>",
         )
     )
@@ -244,7 +246,7 @@ def ar_aging(invoices: pd.DataFrame) -> str:
             y=g["Amount"],
             marker=dict(
                 color=g["Color"].tolist(),
-                line=dict(color="white", width=1)
+                line=dict(color="rgba(48,54,61,0.6)", width=1)
             ),
             text=text,
             textposition="outside",
@@ -277,7 +279,7 @@ def balance_sheet(accounts: pd.DataFrame) -> str:
             y=[r[1] for r in rows],
             marker=dict(
                 color=[r[2] for r in rows],
-                line=dict(color="white", width=1)
+                line=dict(color="rgba(48,54,61,0.6)", width=1)
             ),
             text=text,
             textposition="outside",
@@ -334,7 +336,7 @@ def revenue_by_class(invoices: pd.DataFrame) -> str:
             labels=g["ClassName"],
             values=g["Amount"],
             hole=0.55,
-            marker=dict(colors=SEQ, line=dict(color="white", width=1)),
+            marker=dict(colors=SEQ, line=dict(color="rgba(48,54,61,0.6)", width=1)),
             textinfo="label+percent",
             hovertemplate="%{label}<br>$%{value:,.2f} (%{percent})<extra></extra>",
         )
@@ -356,10 +358,10 @@ def pnl_waterfall(summary: dict) -> str:
     fig = go.Figure(
         go.Waterfall(
             x=x, measure=measure, y=y,
-            connector=dict(line=dict(color="#cbd5e1")),
-            increasing=dict(marker=dict(color="#16a34a")),
-            decreasing=dict(marker=dict(color="#dc2626")),
-            totals=dict(marker=dict(color="#2563eb")),
+            connector=dict(line=dict(color="#6e7681")),
+            increasing=dict(marker=dict(color="#3fb950")),
+            decreasing=dict(marker=dict(color="#f85149")),
+            totals=dict(marker=dict(color="#58a6ff")),
             hovertemplate="%{x}<br>$%{y:,.0f}<extra></extra>",
         )
     )
@@ -375,12 +377,12 @@ def pnl_trend(pnl: pd.DataFrame, basis: str) -> str:
     if df.empty or df["Income"].abs().sum() == 0:
         return empty("No P&L data")
     fig = go.Figure()
-    fig.add_bar(x=df["Month"], y=df["Income"], name="Income", marker=dict(color="#16a34a"),
+    fig.add_bar(x=df["Month"], y=df["Income"], name="Income", marker=dict(color="#3fb950"),
                 hovertemplate="%{x|%b %Y}<br>Income $%{y:,.0f}<extra></extra>")
-    fig.add_bar(x=df["Month"], y=df["Cost"], name="Cost", marker=dict(color="#f1a8a8"),
+    fig.add_bar(x=df["Month"], y=df["Cost"], name="Cost", marker=dict(color="#f778ba88"),
                 hovertemplate="%{x|%b %Y}<br>Cost $%{y:,.0f}<extra></extra>")
     fig.add_scatter(x=df["Month"], y=df["NetIncome"], name="Net Income", mode="lines+markers",
-                    line=dict(color="#2563eb", width=3), marker=dict(size=6),
+                    line=dict(color="#58a6ff", width=3), marker=dict(size=6),
                     hovertemplate="%{x|%b %Y}<br>Net $%{y:,.0f}<extra></extra>")
     fig.update_layout(barmode="group", showlegend=True,
                       legend=dict(orientation="h", y=1.12, x=0))
@@ -398,7 +400,7 @@ def pnl_expenses(pnl_detail: pd.DataFrame, basis: str, start, end, n: int = 10) 
     fig = go.Figure(
         go.Bar(
             x=g["amount"], y=g["account"], orientation="h",
-            marker=dict(color="#dc2626"),
+            marker=dict(color="#f85149"),
             hovertemplate="%{y}<br>$%{x:,.0f}<extra></extra>",
         )
     )
@@ -423,7 +425,7 @@ def accounts_by_type(accounts: pd.DataFrame) -> str:
             x=g["absBal"],
             y=g["AccountType"],
             orientation="h",
-            marker=dict(color="#0e7490"),
+            marker=dict(color="#79c0ff"),
             hovertemplate="%{y}<br>$%{x:,.2f}<extra></extra>",
         )
     )
@@ -522,7 +524,7 @@ def location_period_ranking(invoices: pd.DataFrame, start, end) -> str:
     fig = go.Figure(
         go.Bar(
             x=df["Revenue"], y=labels, orientation="h",
-            marker=dict(color="#0e7490"),
+            marker=dict(color="#79c0ff"),
             hovertemplate="%{y}<br>$%{x:,.2f}<extra></extra>",
         )
     )
@@ -549,7 +551,7 @@ def accounts_by_classification(accounts: pd.DataFrame) -> str:
             labels=g["Classification"],
             values=g["absBal"],
             hole=0.55,
-            marker=dict(colors=SEQ, line=dict(color="white", width=1)),
+            marker=dict(colors=SEQ, line=dict(color="rgba(48,54,61,0.6)", width=1)),
             textinfo="label+percent",
             textposition=textpositions,
             insidetextorientation="radial",

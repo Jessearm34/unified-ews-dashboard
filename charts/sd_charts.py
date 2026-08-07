@@ -96,7 +96,7 @@ def worker_status(workers: pd.DataFrame) -> str:
     if sum(values) == 0:
         return empty()
     fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.55,
-        marker=dict(colors=[SEQ[0], SEQ[-1]], line=dict(color="white", width=1)),
+        marker=dict(colors=[SEQ[0], SEQ[-1]], line=dict(color="rgba(48,54,61,0.6)", width=1)),
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
     return render(_layout(fig, 260))
@@ -109,7 +109,7 @@ def worker_type_split(workers: pd.DataFrame) -> str:
     if sum(values) == 0:
         return empty()
     fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.55,
-        marker=dict(colors=[SEQ[2], SEQ[4]], line=dict(color="white", width=1)),
+        marker=dict(colors=[SEQ[2], SEQ[4]], line=dict(color="rgba(48,54,61,0.6)", width=1)),
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
     return render(_layout(fig, 260))
@@ -143,7 +143,7 @@ def cert_coverage(certs: pd.DataFrame, workers: pd.DataFrame) -> str:
     if sum(values) == 0:
         return empty()
     fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.55,
-        marker=dict(colors=[SEQ[0], "#e2e8f0"], line=dict(color="white", width=1)),
+        marker=dict(colors=[SEQ[0], "#e2e8f0"], line=dict(color="rgba(48,54,61,0.6)", width=1)),
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
     return render(_layout(fig, 260))
@@ -155,8 +155,8 @@ def incident_trend(incidents: pd.DataFrame) -> str:
         return empty()
     tick_count = min(len(df), 6)
     fig = go.Figure(go.Scatter(x=df["Month"], y=df["Count"],
-        mode="lines+markers", line=dict(color="#dc2626", width=3, shape="spline"),
-        marker=dict(size=7, color="#dc2626"), fill="tozeroy",
+        mode="lines+markers", line=dict(color="#f85149", width=3, shape="spline"),
+        marker=dict(size=7, color="#f85149"), fill="tozeroy",
         fillcolor=_rgba("#dc2626", 0.10),
         hovertemplate="%{x|%b %Y}<br>%{y} incidents<extra></extra>"))
     fig.update_layout(showlegend=False)
@@ -186,7 +186,7 @@ def incident_status_pie(incidents: pd.DataFrame) -> str:
     colors = {"Open": "#dc2626", "Closed": "#16a34a", "Investigation": "#ea580c"}
     markers = [colors.get(r["LatestStatus"], ACCENT) for _, r in df.iterrows()]
     fig = go.Figure(go.Pie(labels=df["LatestStatus"], values=df["Count"],
-        hole=0.55, marker=dict(colors=markers, line=dict(color="white", width=1)),
+        hole=0.55, marker=dict(colors=markers, line=dict(color="rgba(48,54,61,0.6)", width=1)),
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
     return render(_layout(fig, 260))
@@ -211,7 +211,7 @@ def equipment_status(equipment: pd.DataFrame) -> str:
     labels = [f"Active ({c['active']})", f"Inactive ({c['inactive']})"]
     values = [c["active"], c["inactive"]]
     fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.55,
-        marker=dict(colors=[SEQ[0], SEQ[-1]], line=dict(color="white", width=1)),
+        marker=dict(colors=[SEQ[0], SEQ[-1]], line=dict(color="rgba(48,54,61,0.6)", width=1)),
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
     return render(_layout(fig, 260))
@@ -252,7 +252,7 @@ def forms_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) 
         x=df["Label"], y=df["Count"],
         marker=dict(color=ACCENT, line=dict(width=0)),
         hovertemplate="%{x} %{y} forms<extra></extra>",
-        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a"),
+        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#e6edf3"),
         customdata=months_iso))
     fig.update_layout(showlegend=False)
     fig.update_yaxes(gridcolor="rgba(48,54,61,0.45)", showticklabels=False, showgrid=False,
@@ -293,12 +293,12 @@ def schedule_compliance(sched: pd.DataFrame) -> str:
     if not values:
         return empty("No schedule data")
     fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.5,
-        marker=dict(colors=colors, line=dict(color="white", width=1)),
+        marker=dict(colors=colors, line=dict(color="rgba(48,54,61,0.6)", width=1)),
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
     pct = c["completion_pct"]
     fig.add_annotation(text=f"{pct:.0f}%<br><span style='font-size:10px'>complete</span>",
-        x=0.5, y=0.5, showarrow=False, font=dict(size=18, color="#16a34a", family="Inter"),
+        x=0.5, y=0.5, showarrow=False, font=dict(size=18, color="#3fb950", family="Inter"),
         align="center")
     return render(_layout(fig, 280))
 
@@ -363,7 +363,7 @@ def form_category_chart(forms: pd.DataFrame) -> str:
               "Other": "#94a3b8"}
     markers = [colors.get(c, "#94a3b8") for c in df["Category"]]
     fig = go.Figure(go.Pie(labels=df["Category"], values=df["Count"],
-        hole=0.55, marker=dict(colors=markers, line=dict(color="white", width=1)),
+        hole=0.55, marker=dict(colors=markers, line=dict(color="rgba(48,54,61,0.6)", width=1)),
         textinfo="label+percent"))
     fig.update_layout(showlegend=False)
     return render(_layout(fig, 280))
@@ -404,14 +404,14 @@ def bbso_risk_heatmap(forms: pd.DataFrame, responses: pd.DataFrame) -> str:
         hovertemplate="%{y}<br>%{x:.1f}% Safe (%{customdata[0]} obs, %{customdata[1]} at-risk)<extra></extra>",
         customdata=df[["Total", "AtRisk"]].values,
         text=df["SafePct"].apply(lambda v: f"{v:.0f}%"),
-        textposition="outside", textfont=dict(size=11, color="#0f172a")))
+        textposition="outside", textfont=dict(size=11, color="#e6edf3")))
     fig.update_layout(showlegend=False)
     fig.update_xaxes(range=[0, 105], gridcolor="rgba(48,54,61,0.45)", title=None,
                      tickfont=dict(size=10))
     fig.update_yaxes(title=None, autorange="reversed")
-    fig.add_vline(x=90, line=dict(color="#16a34a", width=1, dash="dash"))
-    fig.add_vline(x=75, line=dict(color="#eab308", width=1, dash="dash"))
-    fig.add_vline(x=60, line=dict(color="#ea580c", width=1, dash="dash"))
+    fig.add_vline(x=90, line=dict(color="#3fb950", width=1, dash="dash"))
+    fig.add_vline(x=75, line=dict(color="#d29922", width=1, dash="dash"))
+    fig.add_vline(x=60, line=dict(color="#d29922", width=1, dash="dash"))
     return render(_layout(fig, max(260, 30 * len(df))))
 
 
@@ -431,15 +431,15 @@ def bbso_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) -
             max_val = max(max_val, cdf["Count"].max())
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
-        marker=dict(color="#7c3aed", line=dict(width=0)),
+        marker=dict(color="#a371f7", line=dict(width=0)),
         hovertemplate="%{x} %{y} BBSOs<extra></extra>",
-        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
+        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#e6edf3")))
     fig.update_layout(showlegend=False)
     fig.update_yaxes(gridcolor="rgba(48,54,61,0.45)", showticklabels=False, showgrid=False,
                      range=[0, max_val * 1.25])
     fig.update_xaxes(gridcolor="rgba(48,54,61,0.35)", tickfont=dict(size=11))
     if cdf is not None and not cdf.empty:
-        fig = overlay_compare(fig, cdf, color="#7c3aed", name="Last year",
+        fig = overlay_compare(fig, cdf, color="#a371f7", name="Last year",
                               hovertemplate="%{x|%b} Last year<br>%{y} BBSOs<extra></extra>")
     return render(_layout(fig, 260))
 
@@ -457,15 +457,15 @@ def rir_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) ->
             max_val = max(max_val, cdf["Count"].max())
     fig = go.Figure(go.Bar(
         x=df["Label"], y=df["Count"],
-        marker=dict(color="#ea580c", line=dict(width=0)),
+        marker=dict(color="#d29922", line=dict(width=0)),
         hovertemplate="%{x} %{y} RIRs<extra></extra>",
-        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
+        text=df["Count"], textposition="outside", textfont=dict(size=11, color="#e6edf3")))
     fig.update_layout(showlegend=False)
     fig.update_yaxes(gridcolor="rgba(48,54,61,0.45)", showticklabels=False, showgrid=False,
                      range=[0, max_val * 1.25])
     fig.update_xaxes(gridcolor="rgba(48,54,61,0.35)", tickfont=dict(size=11))
     if cdf is not None and not cdf.empty:
-        fig = overlay_compare(fig, cdf, color="#ea580c", name="Last year",
+        fig = overlay_compare(fig, cdf, color="#d29922", name="Last year",
                               hovertemplate="%{x|%b} Last year<br>%{y} RIRs<extra></extra>")
     return render(_layout(fig, 260))
 

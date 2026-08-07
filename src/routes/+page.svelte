@@ -67,10 +67,7 @@
 </svelte:head>
 
 <div class="header">
-	<div>
-		<h1>Overview</h1>
-		<div class="crumbs">Cross-platform KPIs & charts</div>
-	</div>
+	<h1>Overview</h1>
 	<div class="refreshed">
 		<span class="pill">
 			<span class="dot" class:stale={isLoading}></span>
@@ -81,14 +78,8 @@
 
 <RangeControl presets={rangePresets} {range} onChange={onRangeChange} />
 
-<div class="controls" style="margin-top:0">
-	<button class="preset" class:active={compare} onclick={toggleCompare}>
-		{compare ? '◉' : '○'} Compare
-	</button>
-</div>
-
 {#if data?.range_info}
-	<div class="note" style="margin-bottom:14px">Showing {data.range_info}</div>
+	<span class="note">Showing {data.range_info}</span>
 {/if}
 
 {#if isLoading}

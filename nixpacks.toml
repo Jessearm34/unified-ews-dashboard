@@ -1,9 +1,0 @@
-# Nixpacks configuration for Railway
-[phases.setup]
-nixPkgs = ["...", "libpqxx"]
-
-[phases.install]
-cmds = ["pip install --no-cache-dir -r requirements.txt"]
-
-[start]
-cmd = "python -m gunicorn -k uvicorn.workers.UvicornWorker api.main:app --bind 0.0.0.0:${PORT:-8000} --workers 1 --timeout 120 --log-level info"

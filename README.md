@@ -70,24 +70,12 @@ No separate database, no manual steps, no code.
 
 ## CSV export
 
-Append `?format=csv` to any API URL to download raw data:
+Append `?format=csv` to any Insperity API URL to download data:
 
-| Endpoint | Data |
-|---|---|
-| `/_api/qb/overview?format=csv` | Filtered invoices |
-| `/_api/qb/sales?format=csv` | Filtered invoices |
-| `/_api/qb/finance?format=csv` | Chart of accounts |
-| `/_api/qb/profitability?format=csv` | P&L detail |
-| `/_api/qb/customers?format=csv` | Customer revenue summary |
-| `/_api/qb/accounts?format=csv` | Chart of accounts |
-| `/_api/sd/hse?format=csv` | All safety forms |
-| `/_api/sd/forms?format=csv` | All safety forms |
-| `/_api/sd/compliance?format=csv` | Schedule items |
-| `/_api/sd/workers?format=csv` | Worker roster |
-| `/_api/gt/fleet?format=csv` | Daily trends (mileage, trips) |
-| `/_api/gt/maintenance?format=csv` | Vehicle maintenance status |
-| `/_api/insperity/workers?format=csv` | Worker roster with classification |
-| `/_api/insperity/certs?format=csv` | Cert cross-reference |
+```
+/_api/insperity/workers?format=csv   → worker roster CSV
+/_api/insperity/certs?format=csv     → certification cross-reference CSV
+```
 
 ## Redeploying
 

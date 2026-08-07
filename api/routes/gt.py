@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from fastapi import APIRouter, Query
 
 from api.cache import cached
+from api.csv_export import to_csv_response
 from api.utils import resolve_date_range, _rgba, empty as _empty_html
 from data import gt_data as GT
 
@@ -23,7 +24,7 @@ except Exception:
 
 router = APIRouter()
 
-ACCENT = "#2563eb"
+ACCENT = "#58a6ff"
 _EMPTY_HTML = '<div class="chart-empty">No data for this period.</div>'
 
 _PLOT_CONFIG = {"displayModeBar": False, "responsive": True}
@@ -32,13 +33,16 @@ _PLOT_CONFIG = {"displayModeBar": False, "responsive": True}
 def _fig_html(fig, height=350):
     fig.update_layout(
         height=height,
-        margin=dict(l=10, r=10, t=5, b=10),
+        margin=dict(l=55, r=15, t=30, b=45),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="'Inter', system-ui, -apple-system, sans-serif", size=11),
-        yaxis=dict(gridcolor="#e2e8f0", zeroline=False, tickfont=dict(size=10)),
-        xaxis=dict(gridcolor="#f1f5f9", zeroline=False, tickfont=dict(size=10)),
+        font=dict(family="'Inter', system-ui, -apple-system, sans-serif", size=11, color="#8b949e"),
+        yaxis=dict(gridcolor="rgba(48,54,61,0.4)", zeroline=False, tickfont=dict(size=10, color="#6e7681")),
+        xaxis=dict(gridcolor="rgba(48,54,61,0.4)", zeroline=False, tickfont=dict(size=10, color="#6e7681")),
         showlegend=fig.layout.showlegend,
+        dragmode=False,
     )
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True)
     return fig.to_html(include_plotlyjs=False, full_html=False, config=_PLOT_CONFIG)
 
 
@@ -73,9 +77,10 @@ def _load_gt():
 
 
 @router.get("/_api/gt/{section}")
-async def gt_section(section: str = "fleet", range: str = Query(default="all")):
+async def gt_section(section: str = "fleet", range: str = Query(default="all"),
+                     format: str | None = Query(None)):
     try:
-        return _gt_section_impl(section, range_key=range)
+        return _gt_section_impl(section, range_key=range, csv_format=(format == "csv"))
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
@@ -95,12 +100,23 @@ async def gt_section(section: str = "fleet", range: str = Query(default="all")):
         }
 
 
-def _gt_section_impl(section: str, range_key: str):
+def _gt_section_impl(section: str, range_key: str, csv_format: bool = False):
     start, end = resolve_date_range(range_key)
     since = datetime.combine(start, datetime.min.time()).replace(tzinfo=timezone.utc)
     until = datetime.combine(end, datetime.max.time()).replace(tzinfo=timezone.utc)
     now_iso = datetime.now(_HOUSTON).isoformat()
     I = ACCENT
+
+    # CSV export — return raw data, no charts
+    if csv_format:
+        if section == "fleet":
+            tr = GT.daily_trends(since, until)
+            df = pd.DataFrame(tr) if tr else pd.DataFrame()
+            return to_csv_response(df, filename=f"gt_fleet_{range_key}.csv")
+        elif section == "maintenance":
+            mt = GT.vehicle_maintenance_status(since, until)
+            df = pd.DataFrame(mt) if mt else pd.DataFrame()
+            return to_csv_response(df, filename=f"gt_maintenance_{range_key}.csv")
 
     if section == "fleet":
         s = GT.fleet_summary(since, until)
@@ -160,7 +176,7 @@ def _gt_section_impl(section: str, range_key: str):
             df["d"] = pd.to_datetime(df["day"])
             f = go.Figure(go.Bar(
                 x=df["d"], y=df["trips"],
-                marker=dict(color="#ea580c", opacity=0.7),
+                marker=dict(color="#d29922", opacity=0.7),
                 hovertemplate="%{x|%b %d}<br>%{y} trips<extra></extra>"))
             charts["trip_count"] = {"html": _fig_html(f, 200), "title": "Trip Count per Day"}
         else:
@@ -194,9 +210,9 @@ def _gt_section_impl(section: str, range_key: str):
                 df["d"] = pd.to_datetime(df["day"])
                 fig = go.Figure()
                 fig.add_trace(go.Bar(x=df["d"], y=df["seatbelt_off"], name="No Belt",
-                    marker=dict(color="#dc2626"), hovertemplate="%{x|%b %d}<br>%{y}<extra></extra>"))
+                    marker=dict(color="#f85149"), hovertemplate="%{x|%b %d}<br>%{y}<extra></extra>"))
                 fig.add_trace(go.Bar(x=df["d"], y=df["seatbelt_on"], name="Belt On",
-                    marker=dict(color="#16a34a")))
+                    marker=dict(color="#3fb950")))
                 fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
                 charts["seatbelt"] = {"html": _fig_html(fig), "title": "Seatbelt Violations (Daily)"}
 
@@ -211,7 +227,7 @@ def _gt_section_impl(section: str, range_key: str):
                 fig.add_trace(go.Bar(x=df["d"], y=df["work_miles"], name="Work",
                     marker=dict(color=ACCENT), hovertemplate="%{x|%b %d}<br>%{y:.0f} mi<extra></extra>"))
                 fig.add_trace(go.Bar(x=df["d"], y=df["after_hours_miles"], name="After-Hours",
-                    marker=dict(color="#ea580c")))
+                    marker=dict(color="#d29922")))
                 fig.update_layout(barmode="stack", showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
                 charts["after_hours"] = {"html": _fig_html(fig), "title": "Work vs After-Hours Miles"}
 

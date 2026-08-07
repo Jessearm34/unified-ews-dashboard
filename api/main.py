@@ -66,12 +66,37 @@ def _preload_data() -> None:
     log.info("Background data preloading complete")
 
 
+_SYNC_INTERVAL = int(os.getenv("INSPERITY_SYNC_INTERVAL", "600"))  # seconds
+
+
+def _insperity_sync_loop() -> None:
+    """Run Insperity sync every N seconds in a background daemon thread."""
+    time.sleep(5)  # let the app fully start first
+    log.info("Insperity sync worker starting (interval=%ds)", _SYNC_INTERVAL)
+    while True:
+        try:
+            import pull_insperity
+            pull_insperity.sync_all()
+        except Exception as exc:
+            log.warning("Insperity sync failed: %s", exc)
+        time.sleep(_SYNC_INTERVAL)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     log.info("EWS Unified Dashboard starting up")
     t = threading.Thread(target=_preload_data, daemon=True)
     t.start()
+
+    # Insperity background sync — no droplet needed
+    if os.getenv("INSPERITY_API_KEY"):
+        st = threading.Thread(target=_insperity_sync_loop, daemon=True)
+        st.start()
+        log.info("Insperity background sync thread started")
+    else:
+        log.info("Insperity sync not started (no API key)")
+
     yield
     log.info("EWS Unified Dashboard shutting down")
 

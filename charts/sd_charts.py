@@ -128,7 +128,7 @@ def cert_expiry_profile(certs: pd.DataFrame) -> str:
                         marker=dict(color=color))
     fig.update_layout(barmode="stack", showlegend=True,
                       legend=dict(orientation="h", y=1.12, x=0))
-    fig.update_yaxes(title=None, gridcolor="#e2e8f0")
+    fig.update_yaxes(title=None, gridcolor="rgba(48,54,61,0.45)")
     fig.update_xaxes(title=None, tickangle=-30)
     return render(_layout(fig, 320))
 
@@ -160,9 +160,9 @@ def incident_trend(incidents: pd.DataFrame) -> str:
         fillcolor=_rgba("#dc2626", 0.10),
         hovertemplate="%{x|%b %Y}<br>%{y} incidents<extra></extra>"))
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(gridcolor="#e2e8f0", dtick=1)
-    fig.update_xaxes(title=None, gridcolor="#f1f5f9", tickformat="%b %Y",
-                     tickangle=-30, nticks=tick_count, tickfont=dict(size=10),
+    fig.update_yaxes(gridcolor="rgba(48,54,61,0.45)", dtick=1)
+    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", tickformat="%b %Y", tickangle=-30,
+                     nticks=tick_count, tickfont=dict(size=10),
                      tickmode="auto")
     return render(_layout(fig, 300))
 
@@ -174,7 +174,7 @@ def incident_by_type(incidents: pd.DataFrame) -> str:
     fig = go.Figure(go.Bar(x=df["Count"], y=df["TypeName"], orientation="h",
         marker=dict(color=ACCENT)))
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title=None, gridcolor="#e2e8f0", tickfont=dict(size=10))
+    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.45)", tickfont=dict(size=10))
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 34 * len(df))))
 
@@ -199,7 +199,7 @@ def equipment_by_type(equipment: pd.DataFrame) -> str:
     fig = go.Figure(go.Bar(x=df["Count"], y=df["EquipmentTypeName"], orientation="h",
         marker=dict(color=ACCENT)))
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title=None, gridcolor="#e2e8f0", dtick=1)
+    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.45)", dtick=1)
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 34 * len(df))))
 
@@ -230,7 +230,7 @@ def form_types_chart(formtypes: pd.DataFrame, forms: pd.DataFrame) -> str:
         marker=dict(color=ACCENT),
         hovertemplate="%{y}<br>%{x} submissions<extra></extra>"))
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title=None, gridcolor="#e2e8f0", tickfont=dict(size=10))
+    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.45)", tickfont=dict(size=10))
     fig.update_yaxes(title=None, autorange="reversed")
     return render(_layout(fig, max(260, 28 * len(top))))
 
@@ -255,9 +255,9 @@ def forms_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) 
         text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a"),
         customdata=months_iso))
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
+    fig.update_yaxes(gridcolor="rgba(48,54,61,0.45)", showticklabels=False, showgrid=False,
                      range=[0, max_val * 1.25])
-    fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
+    fig.update_xaxes(gridcolor="rgba(48,54,61,0.35)", tickfont=dict(size=11))
     if cdf is not None and not cdf.empty:
         fig = overlay_compare(fig, cdf, color=ACCENT, name="Last year",
                               hovertemplate="%{x|%b} Last year<br>%{y} forms<extra></extra>")
@@ -406,7 +406,7 @@ def bbso_risk_heatmap(forms: pd.DataFrame, responses: pd.DataFrame) -> str:
         text=df["SafePct"].apply(lambda v: f"{v:.0f}%"),
         textposition="outside", textfont=dict(size=11, color="#0f172a")))
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(range=[0, 105], gridcolor="#e2e8f0", title=None,
+    fig.update_xaxes(range=[0, 105], gridcolor="rgba(48,54,61,0.45)", title=None,
                      tickfont=dict(size=10))
     fig.update_yaxes(title=None, autorange="reversed")
     fig.add_vline(x=90, line=dict(color="#16a34a", width=1, dash="dash"))
@@ -435,9 +435,9 @@ def bbso_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) -
         hovertemplate="%{x} %{y} BBSOs<extra></extra>",
         text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
+    fig.update_yaxes(gridcolor="rgba(48,54,61,0.45)", showticklabels=False, showgrid=False,
                      range=[0, max_val * 1.25])
-    fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
+    fig.update_xaxes(gridcolor="rgba(48,54,61,0.35)", tickfont=dict(size=11))
     if cdf is not None and not cdf.empty:
         fig = overlay_compare(fig, cdf, color="#7c3aed", name="Last year",
                               hovertemplate="%{x|%b} Last year<br>%{y} BBSOs<extra></extra>")
@@ -461,9 +461,9 @@ def rir_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) ->
         hovertemplate="%{x} %{y} RIRs<extra></extra>",
         text=df["Count"], textposition="outside", textfont=dict(size=11, color="#0f172a")))
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(gridcolor="#e2e8f0", showticklabels=False, showgrid=False,
+    fig.update_yaxes(gridcolor="rgba(48,54,61,0.45)", showticklabels=False, showgrid=False,
                      range=[0, max_val * 1.25])
-    fig.update_xaxes(gridcolor="#f1f5f9", tickfont=dict(size=11))
+    fig.update_xaxes(gridcolor="rgba(48,54,61,0.35)", tickfont=dict(size=11))
     if cdf is not None and not cdf.empty:
         fig = overlay_compare(fig, cdf, color="#ea580c", name="Last year",
                               hovertemplate="%{x|%b} Last year<br>%{y} RIRs<extra></extra>")

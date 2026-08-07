@@ -141,8 +141,8 @@ def trend(invoices: pd.DataFrame, metric: str, compare_invoices: pd.DataFrame | 
             ))
     fig.update_layout(showlegend=compare_invoices is not None and not compare_invoices.empty,
                       legend=dict(orientation="h", y=1.1, font=dict(size=9)))
-    fig.update_yaxes(title=ylabel, gridcolor="#e2e8f0")
-    fig.update_xaxes(title=None, gridcolor="#f1f5f9", dtick="M1", tickformat="%b %Y")
+    fig.update_yaxes(title=ylabel, gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", dtick="M1", tickformat="%b %Y", tickangle=-30)
     return render(_layout(fig, 320))
 
 
@@ -205,7 +205,7 @@ def top_customers(invoices: pd.DataFrame, n: int = 8) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Billed (USD)", gridcolor="#e2e8f0")
+    fig.update_xaxes(title="Billed (USD)", gridcolor="rgba(48,54,61,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 34 * len(g))))
 
@@ -228,7 +228,7 @@ def balance_status(invoices: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title="USD", gridcolor="#e2e8f0")
+    fig.update_yaxes(title="USD", gridcolor="rgba(48,54,61,0.45)")
     return render(_layout(fig, 300))
 
 
@@ -254,7 +254,7 @@ def ar_aging(invoices: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title="Open balance (USD)", gridcolor="#e2e8f0")
+    fig.update_yaxes(title="Open balance (USD)", gridcolor="rgba(48,54,61,0.45)")
     fig.update_xaxes(title="Days past due")
     return render(_layout(fig, 300))
 
@@ -286,7 +286,7 @@ def balance_sheet(accounts: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title="USD (magnitude)", gridcolor="#e2e8f0")
+    fig.update_yaxes(title="USD (magnitude)", gridcolor="rgba(48,54,61,0.45)")
     return render(_layout(fig, 300))
 
 
@@ -312,7 +312,7 @@ def revenue_by_item(invoices: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Revenue (USD)", gridcolor="#e2e8f0")
+    fig.update_xaxes(title="Revenue (USD)", gridcolor="rgba(48,54,61,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 32 * len(g))))
 
@@ -364,7 +364,7 @@ def pnl_waterfall(summary: dict) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title="USD", gridcolor="#e2e8f0", zeroline=True, zerolinecolor="#94a3b8")
+    fig.update_yaxes(title="USD", gridcolor="rgba(48,54,61,0.45)", zeroline=True, zerolinecolor="#6e7681")
     fig.update_xaxes(tickangle=-25)
     return render(_layout(fig, 340))
 
@@ -384,8 +384,8 @@ def pnl_trend(pnl: pd.DataFrame, basis: str) -> str:
                     hovertemplate="%{x|%b %Y}<br>Net $%{y:,.0f}<extra></extra>")
     fig.update_layout(barmode="group", showlegend=True,
                       legend=dict(orientation="h", y=1.12, x=0))
-    fig.update_yaxes(title="USD", gridcolor="#e2e8f0", zeroline=True, zerolinecolor="#94a3b8")
-    fig.update_xaxes(title=None, gridcolor="#f1f5f9", tickformat="%b %Y")
+    fig.update_yaxes(title="USD", gridcolor="rgba(48,54,61,0.45)", zeroline=True, zerolinecolor="#6e7681")
+    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", tickformat="%b %Y", tickangle=-30)
     return render(_layout(fig, 340))
 
 
@@ -403,7 +403,7 @@ def pnl_expenses(pnl_detail: pd.DataFrame, basis: str, start, end, n: int = 10) 
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Expense (USD)", gridcolor="#e2e8f0")
+    fig.update_xaxes(title="Expense (USD)", gridcolor="rgba(48,54,61,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(280, 30 * len(g))))
 
@@ -428,7 +428,7 @@ def accounts_by_type(accounts: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Balance magnitude (USD)", gridcolor="#e2e8f0")
+    fig.update_xaxes(title="Balance magnitude (USD)", gridcolor="rgba(48,54,61,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 30 * len(g))))
 
@@ -458,8 +458,8 @@ def dso_trend(invoices: pd.DataFrame, start, end) -> str:
             hovertemplate="%{x|%b %Y}<br>DSO: %{y:.1f} days<extra></extra>",
         )
     fig.update_layout(showlegend=True, legend=dict(orientation="h", y=1.12, x=0))
-    fig.update_yaxes(title="Days", gridcolor="#e2e8f0")
-    fig.update_xaxes(title=None, gridcolor="#f1f5f9", tickformat="%b %Y")
+    fig.update_yaxes(title="Days", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", tickformat="%b %Y", tickangle=-30)
     return render(_layout(fig, 320))
 
 
@@ -487,8 +487,8 @@ def revenue_by_customer_monthly(invoices: pd.DataFrame, start, end) -> str:
         legend=dict(orientation="v", font=dict(size=10), x=1.05, y=0.5),
         margin=dict(l=10, r=130, t=10, b=10),
     )
-    fig.update_yaxes(title="Revenue", gridcolor="#e2e8f0")
-    fig.update_xaxes(title=None, gridcolor="#f1f5f9", tickformat="%b %Y")
+    fig.update_yaxes(title="Revenue", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", tickformat="%b %Y", tickangle=-30)
     return render(_layout(fig, 320))
 
 
@@ -507,7 +507,7 @@ def class_period_ranking(invoices: pd.DataFrame, start, end) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Revenue", gridcolor="#e2e8f0")
+    fig.update_xaxes(title="Revenue", gridcolor="rgba(48,54,61,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 34 * len(df))))
 
@@ -527,7 +527,7 @@ def location_period_ranking(invoices: pd.DataFrame, start, end) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Revenue", gridcolor="#e2e8f0")
+    fig.update_xaxes(title="Revenue", gridcolor="rgba(48,54,61,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 34 * len(df))))
 

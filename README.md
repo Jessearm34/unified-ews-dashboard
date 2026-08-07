@@ -58,19 +58,15 @@ Insperity API key which also lives on the DO droplet.
 3. Change it to the new password
 4. Click **Deploy** — the app restarts with the new password
 
-## How to update the Insperity Direct/Indirect classification
+## How the Direct/Indirect classification works
 
-The classification lives in the **database**, not in code. Vrutika can update it:
+The sync worker reads each employee's department from Insperity:
 
-1. Go to [Railway](https://railway.app) → Postgres → Data tab
-2. Open the `insperity_classification` table
-3. Add or edit a row:
-   - `last_name`: uppercase (e.g. "SMITH")
-   - `first_name`: uppercase (e.g. "JOHN")
-   - `classification`: "direct" or "indirect"
-4. The cron job picks it up on the next sync (within 10 minutes)
+- **FIELD** or **SHOP** → Direct
+- Everything else → Indirect
 
-No code. No git. No IT.
+Vrutika updates someone's department in Insperity → the next sync picks it up.
+No separate database, no manual steps, no code.
 
 ## CSV export
 

@@ -253,15 +253,15 @@ def pull_locations():
         "state": "state",
     })
 
-from data.insperity_classification import build_classification_lookup, classify as _cls
+from data.insperity_classification import classify as _cls
 
 
-def _classify(last_name, first_name, department_name=None, lookup=None) -> str:
-    """Use DB-based lookup for Vrutika's classification."""
-    return _cls(last_name, first_name, department_name, lookup or {})
+def _classify(department_name=None) -> str:
+    """Direct = FIELD or SHOP in Insperity.  Indirect = everything else."""
+    return _cls(department_name)
 
 
-def _build_worker_view(emp, empmt, pos, depts, locs, classification_lookup=None) -> pd.DataFrame:
+def _build_worker_view(emp, empmt, pos, depts, locs) -> pd.DataFrame:
     """Join into one worker row with Direct/Indirect classification."""
     if emp.empty:
         return pd.DataFrame(columns=[
@@ -280,10 +280,9 @@ def _build_worker_view(emp, empmt, pos, depts, locs, classification_lookup=None)
     if not pos.empty:
         df = df.merge(pos, on="person_id", how="left")
 
-    # Classification — Vrutika's list overrides Insperity
-    lookup = classification_lookup or {}
+    # Classification — Insperity department = FIELD/SHOP → Direct
     df["classification"] = df.apply(
-        lambda r: _classify(r.get("last_name"), r.get("first_name"), r.get("department_name"), lookup), axis=1
+        lambda r: _classify(r.get("department_name")), axis=1
     )
 
     # Region — from employee's city/state, falls back to Houston
@@ -337,9 +336,6 @@ def sync_all():
 
     engine = _engine()
 
-    # Build classification lookup from the DB
-    classification_lookup = build_classification_lookup(engine)
-
     log.info("Pulling endpoints...")
     emp = pull_employees()
     empmt = pull_employment()
@@ -355,7 +351,7 @@ def sync_all():
     _fresh_table(engine, "locations", locs)
 
     # Build & persist unified worker view
-    workers = _build_worker_view(emp, empmt, pos, depts, locs, classification_lookup)
+    workers = _build_worker_view(emp, empmt, pos, depts, locs)
     _fresh_table(engine, "workers", workers)
 
     # Headcount breakdown

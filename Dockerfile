@@ -13,4 +13,7 @@ COPY data/ ./data/
 COPY charts/ ./charts/
 COPY static/ ./static/
 
-CMD uvicorn api.main:app --host 0.0.0.0 --port $PORT
+# Cache-bust — date command always produces different output
+RUN date > /app/.build_ts
+
+CMD ["sh", "-c", "echo started on port $PORT && uvicorn api.main:app --host 0.0.0.0 --port $PORT"]

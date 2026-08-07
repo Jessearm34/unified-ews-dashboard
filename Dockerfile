@@ -12,6 +12,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+ARG CACHE_BUST=1
 COPY api/ ./api/
 COPY data/ ./data/
 COPY charts/ ./charts/
@@ -19,4 +20,4 @@ COPY static/ ./static/
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker api.main:app --bind 0.0.0.0:${PORT:-8000} --workers 1 --timeout 120 --max-requests 1000 --max-requests-jitter 100"]
+CMD ["sh", "-c", "echo 'Starting...' && gunicorn -k uvicorn.workers.UvicornWorker api.main:app --bind 0.0.0.0:${PORT:-8000} --workers 1 --timeout 120 --max-requests 1000 --max-requests-jitter 100 --log-level info"]

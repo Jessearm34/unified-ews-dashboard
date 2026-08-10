@@ -66,9 +66,21 @@ def _preload_data() -> None:
     log.info("Background data preloading complete")
 
 
+# ---------------------------------------------------------------------------
+# Startup diagnostics
+# ---------------------------------------------------------------------------
+
+from api.diagnostics import run_startup_diagnostics
+
+_diag: dict | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
+    global _diag
+
+    _diag = run_startup_diagnostics()
     log.info("EWS Unified Dashboard starting up")
     t = threading.Thread(target=_preload_data, daemon=True)
     t.start()
@@ -101,6 +113,20 @@ app.add_middleware(
 
 # -- Sessions ----------------------------------------------------------------
 app.add_middleware(SessionMiddleware, secret_key=cfg.SESSION_SECRET)
+
+
+# -- Error logging middleware --------------------------------------------------
+@app.middleware("http")
+async def log_errors(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        if response.status_code >= 500:
+            log.error("5xx error: %s %s → %s", request.method, request.url.path, response.status_code)
+        return response
+    except Exception as exc:
+        log.exception("Unhandled error: %s %s", request.method, request.url.path)
+        raise
+
 
 # ---------------------------------------------------------------------------
 # Router imports  (mounted at no prefix — each router defines its own path)
@@ -174,7 +200,7 @@ except ImportError:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "diagnostics": _diag or {}}
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Query
 
 from api.cache import cached
 from api.chart_errors import safe_chart
+from api.csv_export import to_csv_response
 from api.utils import resolve_date_range, previous_range, compute_delta
 
 import logging
@@ -232,7 +233,8 @@ def _sd_charts(sd_ds, compare: bool = False, prev_start=None, prev_end=None):
 
 @router.get("/_api/overview")
 def overview(range: str = Query("ytd", description="Date range key"),
-             compare: bool = Query(False, description="Show year-over-year overlay on trend charts")):
+             compare: bool = Query(False, description="Show year-over-year overlay on trend charts"),
+             format: str | None = Query(None)):
     """Return KPI data + chart HTML for the Overview dashboard.
 
     Mirrors the original render_overview() from app.py as a JSON API.
@@ -241,6 +243,14 @@ def overview(range: str = Query("ytd", description="Date range key"),
     """
     start, end = resolve_date_range(range)
     prev_start, prev_end = previous_range(range, start, end)
+
+    # CSV export — return raw invoices
+    if format == "csv":
+        qb_ds = cached("qb", QB.qb_load_dataset)
+        if qb_ds and not qb_ds.invoices.empty:
+            inv = QB.filter_invoices(qb_ds.invoices, start, end)
+            return to_csv_response(inv, filename=f"overview_{range}.csv")
+        return to_csv_response(pd.DataFrame(), filename="overview_empty.csv")
 
     # Load QB and SD in parallel
     qb_ds = None

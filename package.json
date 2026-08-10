@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "vite build",
+			"build": "rm -rf static/_app static/version.json && vite build",
 		"preview": "vite preview"
 	},
 	"devDependencies": {

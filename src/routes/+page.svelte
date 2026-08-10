@@ -87,7 +87,17 @@
 {:else if errMsg}
 	<div class="chart-empty">{errMsg}</div>
 {:else if data}
-	<!-- KPI Groups -->
+	{#if data?.health}
+<div class="health-bar">
+	<span class="status"><span class="icon green"></span> {data.health.green} OK</span>
+	{#if data.health.amber > 0}<span class="sep"></span><span class="status"><span class="icon amber"></span> {data.health.amber} Warn</span>{/if}
+	{#if data.health.red > 0}<span class="sep"></span><span class="status"><span class="icon red"></span> {data.health.red} Issue</span>{/if}
+	<span class="sep"></span>
+	<span>Health Score: {data.health.score}%</span>
+</div>
+{/if}
+
+<!-- KPI Groups -->
 	{#if data.kpis?.length}
 		{#if data.kpis.filter(k => k.platform === 'QB').length}
 			<div class="kpi-group">

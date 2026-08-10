@@ -22,15 +22,22 @@ from sqlalchemy import create_engine
 def qb_get_db_url():
     url = os.getenv("QB_DATABASE_URL")
     if url:
-        # Standardize Railway/Cloud URLs for SQLAlchemy
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg2://", 1)
         return url
-    # Fallback: local dev (also used as the default when deploying to Railway)
-    return "postgresql+psycopg2://ews:ews_local_dev@localhost:5432/warehouse"
+    # No QB_DATABASE_URL set — QB section won't work. Return empty so loaders fail clearly.
+    raise RuntimeError(
+        "QB_DATABASE_URL environment variable is not set. "
+        "QuickBooks data cannot be loaded. Set QB_DATABASE_URL in Railway Variables."
+    )
 
 
-DATABASE_URL = qb_get_db_url()
+DATABASE_URL: str | None = None
+try:
+    DATABASE_URL = qb_get_db_url()
+except RuntimeError as e:
+    import logging
+    logging.getLogger("ewsd").warning("QuickBooks unavailable: %s", e)
 
 
 @lru_cache(maxsize=1)

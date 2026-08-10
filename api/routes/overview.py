@@ -6,13 +6,18 @@ JSON API endpoint, using FastAPI APIRouter and api.cache.cached() for data.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
 
 import pandas as pd
 from fastapi import APIRouter, Query
 
 from api.cache import cached
+from api.chart_errors import safe_chart
 from api.utils import resolve_date_range, previous_range, compute_delta
+
+import logging
+log = logging.getLogger("ewsd.overview")
 
 # Houston timezone
 try:
@@ -131,8 +136,10 @@ def _qb_kpis(qb_ds, start, end, prev_start, prev_end):
         if not qb_ds.pnl.empty
         else (float(invoices["Revenue"].sum()) if not invoices.empty else 0.0)
     )
+    gross = revenue - abs(pnl.get("cogs", 0))
+    margin = (gross / revenue * 100) if revenue > 0 else 0
+    dso = QB.compute_dso(invoices, start, end) if not invoices.empty else 0
 
-    # Previous period values
     prev_invoices = QB.filter_invoices(qb_ds.invoices, prev_start, prev_end) if prev_start != start else invoices
     prev_pnl = QB.pnl_summary(qb_ds.pnl, "accrual", prev_start, prev_end)
     prev_revenue = (
@@ -140,18 +147,21 @@ def _qb_kpis(qb_ds, start, end, prev_start, prev_end):
         if not qb_ds.pnl.empty
         else (float(prev_invoices["Revenue"].sum()) if not prev_invoices.empty else 0.0)
     )
+    prev_margin = ((prev_revenue - abs(prev_pnl.get("cogs", 0))) / prev_revenue * 100) if prev_revenue > 0 else 0
 
     return [
         {"label": "Revenue", "value": _fmt_val(revenue, "$"), "unit": "$", "platform": "QB", "hint": "", "rag": None,
-         "delta": compute_delta(revenue, prev_revenue), "delta_up_good": True, "deltaLabel": "vs. prior period",
-         "help": "Total revenue for the selected period from QuickBooks Profit & Loss"},
+         "delta": compute_delta(revenue, prev_revenue), "delta_up_good": True, "deltaLabel": "vs. prior period"},
+        {"label": "Gross Margin", "value": _fmt_val(margin, "%"), "unit": "%", "platform": "QB", "hint": "", "rag": _rag(margin, 40, 20),
+         "delta": compute_delta(margin, prev_margin), "delta_up_good": True, "deltaLabel": "vs. prior period"},
         {"label": "Cash on Hand", "value": _fmt_val(bs["cash"], "$"), "unit": "$", "platform": "QB", "hint": "", "rag": None,
          "delta": None, "delta_up_good": True},
         {"label": "Outstanding AR", "value": _fmt_val(bs["ar"], "$"), "unit": "$", "platform": "QB", "hint": "", "rag": None,
          "delta": None, "delta_up_good": False, "help": "Accounts receivable — invoiced but not yet collected"},
+        {"label": "DSO", "value": _fmt_val(dso, "days"), "unit": "days", "platform": "QB", "hint": "Days sales outstanding", "rag": _rag(dso, 45, 60, False),
+         "delta": None, "delta_up_good": False},
         {"label": "Net Income", "value": _fmt_val(pnl["net_income"], "$"), "unit": "$", "platform": "QB", "hint": "", "rag": None,
-         "delta": compute_delta(pnl["net_income"], prev_pnl["net_income"]), "delta_up_good": True, "deltaLabel": "vs. prior period",
-         "help": "Profit & Loss net income for the selected period"},
+         "delta": compute_delta(pnl["net_income"], prev_pnl["net_income"]), "delta_up_good": True, "deltaLabel": "vs. prior period"},
     ]
 
 
@@ -162,18 +172,17 @@ def _qb_charts(qb_ds, start, end, compare: bool = False, prev_start=None, prev_e
     """Build QB chart dicts — mirrors app.py lines 566–573."""
     charts = {}
     if qb_ds:
-        try:
-            inv = QB.filter_invoices(qb_ds.invoices, start, end)
-            if not inv.empty:
-                comp_inv = None
-                if compare and prev_start and prev_end and prev_start != start:
-                    comp_inv = QB.filter_invoices(qb_ds.invoices, prev_start, prev_end)
-                charts["revenue-trend"] = {
-                    "html": QBC.trend(inv, "revenue", compare_invoices=comp_inv),
-                    "title": "Monthly Revenue Trend",
-                }
-        except Exception:
-            pass
+        inv = QB.filter_invoices(qb_ds.invoices, start, end)
+        if not inv.empty:
+            comp_inv = None
+            if compare and prev_start and prev_end and prev_start != start:
+                comp_inv = QB.filter_invoices(qb_ds.invoices, prev_start, prev_end)
+            html = safe_chart(
+                lambda: QBC.trend(inv, "revenue", compare_invoices=comp_inv),
+                "revenue-trend",
+            )
+            if "Error rendering" not in html:
+                charts["revenue-trend"] = {"html": html, "title": "Monthly Revenue Trend"}
     return charts
 
 
@@ -196,36 +205,24 @@ def _sd_charts(sd_ds, compare: bool = False, prev_start=None, prev_end=None):
                 pass
 
         # Schedule Compliance
-        try:
-            if not sd_ds.schedules.empty:
-                sched_c = SD.schedule_counts(sd_ds.schedules)
-                if sched_c.get("total", 0) > 0:
-                    charts["schedule-compliance"] = {
-                        "html": SDC.schedule_compliance(sd_ds.schedules),
-                        "title": "Schedule Compliance",
-                    }
-        except Exception:
-            pass
+        if not sd_ds.schedules.empty:
+            sched_c = SD.schedule_counts(sd_ds.schedules)
+            if sched_c.get("total", 0) > 0:
+                html = safe_chart(lambda: SDC.schedule_compliance(sd_ds.schedules), "schedule-compliance")
+                if "Error rendering" not in html:
+                    charts["schedule-compliance"] = {"html": html, "title": "Schedule Compliance"}
 
-        # Monthly BBSO (with optional overlay)
-        try:
-            if not sd_ds.forms.empty:
-                charts["monthly-bbso"] = {
-                    "html": SDC.bbso_trend(sd_ds.forms, compare_forms=compare_forms),
-                    "title": "Monthly BBSO",
-                }
-        except Exception:
-            pass
+        # Monthly BBSO
+        if not sd_ds.forms.empty:
+            html = safe_chart(lambda: SDC.bbso_trend(sd_ds.forms, compare_forms=compare_forms), "monthly-bbso")
+            if "Error rendering" not in html:
+                charts["monthly-bbso"] = {"html": html, "title": "Monthly BBSO"}
 
-        # Forms Monthly Trend (with optional overlay)
-        try:
-            if not sd_ds.forms.empty:
-                charts["forms-trend"] = {
-                    "html": SDC.forms_trend(sd_ds.forms, compare_forms=compare_forms),
-                    "title": "Forms Monthly Trend",
-                }
-        except Exception:
-            pass
+        # Forms Monthly Trend
+        if not sd_ds.forms.empty:
+            html = safe_chart(lambda: SDC.forms_trend(sd_ds.forms, compare_forms=compare_forms), "forms-trend")
+            if "Error rendering" not in html:
+                charts["forms-trend"] = {"html": html, "title": "Forms Monthly Trend"}
 
     return charts
 
@@ -245,8 +242,24 @@ def overview(range: str = Query("ytd", description="Date range key"),
     start, end = resolve_date_range(range)
     prev_start, prev_end = previous_range(range, start, end)
 
-    qb_ds = cached("qb", QB.qb_load_dataset)
-    sd_ds = cached("sd", SD.sd_load_dataset)
+    # Load QB and SD in parallel
+    qb_ds = None
+    sd_ds = None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = {
+            pool.submit(lambda: cached("qb", QB.qb_load_dataset)): "qb",
+            pool.submit(lambda: cached("sd", SD.sd_load_dataset)): "sd",
+        }
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                result = future.result(timeout=30)
+                if key == "qb":
+                    qb_ds = result
+                else:
+                    sd_ds = result
+            except Exception as exc:
+                log.warning("Failed to load %s data in overview: %s", key, exc)
 
     kpis = []
     if qb_ds:
@@ -269,9 +282,20 @@ def overview(range: str = Query("ytd", description="Date range key"),
     except Exception:
         pass
 
+    # Compute health summary from KPI RAG values
+    green = sum(1 for k in kpis if k.get("rag") == "green")
+    amber = sum(1 for k in kpis if k.get("rag") == "amber")
+    red = sum(1 for k in kpis if k.get("rag") == "red")
+    total_rag = green + amber + red
+    health = {
+        "green": green, "amber": amber, "red": red,
+        "score": round(green / total_rag * 100) if total_rag > 0 else 100,
+    } if total_rag > 0 else {"green": 0, "amber": 0, "red": 0, "score": 100}
+
     return {
         "kpis": kpis,
         "charts": charts,
+        "health": health,
         "loaded_at": datetime.now(_HOUSTON).isoformat(),
         "range_info": f"{range.upper()} · {start.strftime('%b %d')} – {end.strftime('%b %d, %Y')}",
         "has_more": {

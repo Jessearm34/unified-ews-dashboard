@@ -68,9 +68,18 @@ a { color: var(--accent); text-decoration: none; }
 .subnav {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  padding: 0 20px;
-  display: flex; align-items: center; gap: 2px; height: 36px;
+  padding: 0 40px;
+  display: flex; align-items: center; gap: 0; height: 36px;
   position: sticky; top: 48px; z-index: 9;
+}
+.subnav .tn-link {
+  height: 100%; display: flex; align-items: center;
+  border-bottom: 2px solid transparent; border-radius: 0;
+  padding: 0 14px;
+}
+.subnav .tn-link.active {
+  background: transparent; color: var(--ink); font-weight: 600;
+  border-bottom-color: var(--accent);
 }
 
 /* ── Main content — full width ── */
@@ -103,6 +112,20 @@ a { color: var(--accent); text-decoration: none; }
 }
 .preset:hover { border-color: var(--border-hover); color: var(--ink); }
 .preset.active { background: var(--accent-emphasis); border-color: var(--accent-emphasis); color: #fff; }
+
+/* ── Health bar ── */
+.health-bar {
+  display: flex; gap: 10px; margin-bottom: 14px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 16px;
+  align-items: center; font-size: 12px;
+}
+.health-bar .status { display: flex; align-items: center; gap: 6px; }
+.health-bar .status .icon { width: 8px; height: 8px; border-radius: 50%; }
+.health-bar .status .icon.green { background: var(--good); }
+.health-bar .status .icon.amber { background: var(--warn); }
+.health-bar .status .icon.red { background: var(--bad); }
+.health-bar .sep { width: 1px; height: 18px; background: var(--border); }
 
 /* ── KPIs — full width, 6 across ── */
 .kpis {

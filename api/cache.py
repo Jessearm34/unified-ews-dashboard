@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional
 
 _data_cache: dict[str, Any] = {}
 _cache_ts: dict[str, float] = {}
-_DATA_CACHE_TTL = 600  # 10 minutes
+_DATA_CACHE_TTL = 60  # match frontend poll interval
 
 # Chart HTML cache
 _chart_html_cache: dict[str, tuple[str, float]] = {}

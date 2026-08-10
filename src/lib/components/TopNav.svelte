@@ -29,7 +29,12 @@
 				onclick={() => navigateTo(pf.key, pf.sections[0].key)}>{pf.label}</button>
 		{/each}
 	</nav>
-	<div class="right"><span class="dot"></span> Live</div>
+		<div class="right">
+			{#if currentPlatform && currentPlatform !== 'overview'}
+				<a class="tn-link" href="/_api/{currentPlatform}/{currentSection}?format=csv" target="_blank" title="Download CSV">⭳ CSV</a>
+			{/if}
+			<span class="dot"></span> Live
+		</div>
 </header>
 
 {#if currentPlatform && currentPlatform !== 'overview'}

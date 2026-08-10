@@ -18,5 +18,5 @@ PORT = int(os.getenv("PORT", "8000"))
 DEBUG = os.getenv("DEBUG", "").lower() in ("1", "true", "yes")
 
 # ── Cache ──
-DATA_CACHE_TTL = int(os.getenv("DATA_CACHE_TTL", "600"))
-CHART_CACHE_TTL = int(os.getenv("CHART_CACHE_TTL", "30"))
+DATA_CACHE_TTL = int(os.getenv("DATA_CACHE_TTL", "60"))
+CHART_CACHE_TTL = int(os.getenv("CHART_CACHE_TTL", "60"))

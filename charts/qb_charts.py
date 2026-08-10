@@ -19,9 +19,9 @@ try:
 except ImportError:
     from visualize_fasthtml.data import qb_data as D
 
-# Palette echoing the executive-dashboard mock.
-ACCENT = "#58a6ff"
-SEQ = ["#58a6ff", "#3fb950", "#d29922", "#a371f7", "#f778ba", "#79c0ff", "#f85149", "#7ee787"]
+# Palette — distinct but understated, professional
+ACCENT = "#4a90d9"
+SEQ = ["#4a90d9", "#2d8659", "#c78535", "#c23b3b", "#7c5cbf", "#5b8cac", "#c45d8c", "#4d9078"]
 MARKER_DIM = "#6e7681"
 MARKER_LINE = "rgba(48,54,61,0.6)"
 
@@ -48,7 +48,7 @@ def _layout(fig: go.Figure, height: int = 340) -> go.Figure:
         uniformtext=dict(minsize=9, mode="hide"),
         hoverlabel=dict(bgcolor="#161b22", font_size=12, font_family="Inter, system-ui, sans-serif",
                         font_color="#e6edf3", bordercolor="#30363d"),
-        colorway=["#58a6ff", "#3fb950", "#d29922", "#f85149", "#a371f7", "#79c0ff", "#f778ba", "#7ee787"],
+        colorway=["#4a90d9", "#2d8659", "#c78535", "#c23b3b", "#7c5cbf", "#5b8cac", "#c45d8c", "#4d9078"],
         dragmode=False,
     )
     fig.update_xaxes(gridcolor="rgba(48,54,61,0.3)", zerolinecolor="rgba(48,54,61,0.4)",
@@ -359,9 +359,9 @@ def pnl_waterfall(summary: dict) -> str:
         go.Waterfall(
             x=x, measure=measure, y=y,
             connector=dict(line=dict(color="#6e7681")),
-            increasing=dict(marker=dict(color="#3fb950")),
-            decreasing=dict(marker=dict(color="#f85149")),
-            totals=dict(marker=dict(color="#58a6ff")),
+            increasing=dict(marker=dict(color="#2d8659")),
+            decreasing=dict(marker=dict(color="#c23b3b")),
+            totals=dict(marker=dict(color="#4a90d9")),
             hovertemplate="%{x}<br>$%{y:,.0f}<extra></extra>",
         )
     )
@@ -377,12 +377,12 @@ def pnl_trend(pnl: pd.DataFrame, basis: str) -> str:
     if df.empty or df["Income"].abs().sum() == 0:
         return empty("No P&L data")
     fig = go.Figure()
-    fig.add_bar(x=df["Month"], y=df["Income"], name="Income", marker=dict(color="#3fb950"),
+    fig.add_bar(x=df["Month"], y=df["Income"], name="Income", marker=dict(color="#2d8659"),
                 hovertemplate="%{x|%b %Y}<br>Income $%{y:,.0f}<extra></extra>")
     fig.add_bar(x=df["Month"], y=df["Cost"], name="Cost", marker=dict(color="#f778ba88"),
                 hovertemplate="%{x|%b %Y}<br>Cost $%{y:,.0f}<extra></extra>")
     fig.add_scatter(x=df["Month"], y=df["NetIncome"], name="Net Income", mode="lines+markers",
-                    line=dict(color="#58a6ff", width=3), marker=dict(size=6),
+                    line=dict(color="#4a90d9", width=3), marker=dict(size=6),
                     hovertemplate="%{x|%b %Y}<br>Net $%{y:,.0f}<extra></extra>")
     fig.update_layout(barmode="group", showlegend=True,
                       legend=dict(orientation="h", y=1.12, x=0))
@@ -400,7 +400,7 @@ def pnl_expenses(pnl_detail: pd.DataFrame, basis: str, start, end, n: int = 10) 
     fig = go.Figure(
         go.Bar(
             x=g["amount"], y=g["account"], orientation="h",
-            marker=dict(color="#f85149"),
+            marker=dict(color="#c23b3b"),
             hovertemplate="%{y}<br>$%{x:,.0f}<extra></extra>",
         )
     )
@@ -425,7 +425,7 @@ def accounts_by_type(accounts: pd.DataFrame) -> str:
             x=g["absBal"],
             y=g["AccountType"],
             orientation="h",
-            marker=dict(color="#79c0ff"),
+            marker=dict(color="#5b8cac"),
             hovertemplate="%{y}<br>$%{x:,.2f}<extra></extra>",
         )
     )
@@ -524,7 +524,7 @@ def location_period_ranking(invoices: pd.DataFrame, start, end) -> str:
     fig = go.Figure(
         go.Bar(
             x=df["Revenue"], y=labels, orientation="h",
-            marker=dict(color="#79c0ff"),
+            marker=dict(color="#5b8cac"),
             hovertemplate="%{y}<br>$%{x:,.2f}<extra></extra>",
         )
     )

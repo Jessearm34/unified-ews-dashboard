@@ -20,10 +20,10 @@ except ImportError:
     from visualize_fasthtml.data import qb_data as D
 
 # Palette — distinct but understated, professional
-ACCENT = "#4a90d9"
-SEQ = ["#4a90d9", "#2d8659", "#c78535", "#c23b3b", "#7c5cbf", "#5b8cac", "#c45d8c", "#4d9078"]
-MARKER_DIM = "#6e7681"
-MARKER_LINE = "rgba(48,54,61,0.6)"
+ACCENT = "#539bf5"
+SEQ = ["#539bf5", "#57ab5a", "#daaa3f", "#f47067", "#986ee2", "#5b8cac", "#db6d8c", "#4d9078"]
+MARKER_DIM = "#6a737d"
+MARKER_LINE = "rgba(55,59,68,0.6)"
 
 _PLOT_CONFIG = {"displayModeBar": False, "displaylogo": False, "responsive": True}
 _ids = iter(lambda: f'chart-{random.randrange(10_000_000, 99_999_999)}', None)
@@ -48,13 +48,13 @@ def _layout(fig: go.Figure, height: int = 340) -> go.Figure:
         uniformtext=dict(minsize=9, mode="hide"),
         hoverlabel=dict(bgcolor="#161b22", font_size=12, font_family="Inter, system-ui, sans-serif",
                         font_color="#e6edf3", bordercolor="#30363d"),
-        colorway=["#4a90d9", "#2d8659", "#c78535", "#c23b3b", "#7c5cbf", "#5b8cac", "#c45d8c", "#4d9078"],
+        colorway=["#539bf5", "#57ab5a", "#daaa3f", "#f47067", "#986ee2", "#5b8cac", "#db6d8c", "#4d9078"],
         dragmode=False,
     )
-    fig.update_xaxes(gridcolor="rgba(48,54,61,0.3)", zerolinecolor="rgba(48,54,61,0.4)",
+    fig.update_xaxes(gridcolor="rgba(55,59,68,0.3)", zerolinecolor="rgba(55,59,68,0.4)",
                      tickfont=dict(color="#6e7681", size=10), automargin=True,
                      ticklabelposition="outside", tickangle=0, nticks=8)
-    fig.update_yaxes(gridcolor="rgba(48,54,61,0.3)", zerolinecolor="rgba(48,54,61,0.4)",
+    fig.update_yaxes(gridcolor="rgba(55,59,68,0.3)", zerolinecolor="rgba(55,59,68,0.4)",
                      tickfont=dict(color="#6e7681", size=10), automargin=True,
                      nticks=6)
     return fig
@@ -143,8 +143,8 @@ def trend(invoices: pd.DataFrame, metric: str, compare_invoices: pd.DataFrame | 
             ))
     fig.update_layout(showlegend=compare_invoices is not None and not compare_invoices.empty,
                       legend=dict(orientation="h", y=1.1, font=dict(size=9)))
-    fig.update_yaxes(title=ylabel, gridcolor="rgba(48,54,61,0.45)")
-    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", dtick="M1", tickformat="%b %Y", tickangle=-30)
+    fig.update_yaxes(title=ylabel, gridcolor="rgba(55,59,68,0.45)")
+    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", dtick="M1", tickformat="%b %Y", tickangle=-30)
     return render(_layout(fig, 320))
 
 
@@ -176,7 +176,7 @@ def revenue_by_city(invoices: pd.DataFrame) -> str:
             rotation=135,
             textfont=dict(size=10),
             automargin=True,
-            marker=dict(colors=SEQ, line=dict(color="rgba(48,54,61,0.6)", width=1)),
+            marker=dict(colors=SEQ, line=dict(color="rgba(55,59,68,0.6)", width=1)),
             hovertemplate="%{label}<br>$%{value:,.2f} (%{percent})<extra></extra>",
         )
     )
@@ -207,7 +207,7 @@ def top_customers(invoices: pd.DataFrame, n: int = 8) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Billed (USD)", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title="Billed (USD)", gridcolor="rgba(55,59,68,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 34 * len(g))))
 
@@ -230,7 +230,7 @@ def balance_status(invoices: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title="USD", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_yaxes(title="USD", gridcolor="rgba(55,59,68,0.45)")
     return render(_layout(fig, 300))
 
 
@@ -246,7 +246,7 @@ def ar_aging(invoices: pd.DataFrame) -> str:
             y=g["Amount"],
             marker=dict(
                 color=g["Color"].tolist(),
-                line=dict(color="rgba(48,54,61,0.6)", width=1)
+                line=dict(color="rgba(55,59,68,0.6)", width=1)
             ),
             text=text,
             textposition="outside",
@@ -256,7 +256,7 @@ def ar_aging(invoices: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title="Open balance (USD)", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_yaxes(title="Open balance (USD)", gridcolor="rgba(55,59,68,0.45)")
     fig.update_xaxes(title="Days past due")
     return render(_layout(fig, 300))
 
@@ -279,7 +279,7 @@ def balance_sheet(accounts: pd.DataFrame) -> str:
             y=[r[1] for r in rows],
             marker=dict(
                 color=[r[2] for r in rows],
-                line=dict(color="rgba(48,54,61,0.6)", width=1)
+                line=dict(color="rgba(55,59,68,0.6)", width=1)
             ),
             text=text,
             textposition="outside",
@@ -288,7 +288,7 @@ def balance_sheet(accounts: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title="USD (magnitude)", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_yaxes(title="USD (magnitude)", gridcolor="rgba(55,59,68,0.45)")
     return render(_layout(fig, 300))
 
 
@@ -314,7 +314,7 @@ def revenue_by_item(invoices: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Revenue (USD)", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title="Revenue (USD)", gridcolor="rgba(55,59,68,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 32 * len(g))))
 
@@ -336,7 +336,7 @@ def revenue_by_class(invoices: pd.DataFrame) -> str:
             labels=g["ClassName"],
             values=g["Amount"],
             hole=0.55,
-            marker=dict(colors=SEQ, line=dict(color="rgba(48,54,61,0.6)", width=1)),
+            marker=dict(colors=SEQ, line=dict(color="rgba(55,59,68,0.6)", width=1)),
             textinfo="label+percent",
             hovertemplate="%{label}<br>$%{value:,.2f} (%{percent})<extra></extra>",
         )
@@ -359,14 +359,14 @@ def pnl_waterfall(summary: dict) -> str:
         go.Waterfall(
             x=x, measure=measure, y=y,
             connector=dict(line=dict(color="#6e7681")),
-            increasing=dict(marker=dict(color="#2d8659")),
-            decreasing=dict(marker=dict(color="#c23b3b")),
-            totals=dict(marker=dict(color="#4a90d9")),
+            increasing=dict(marker=dict(color="#57ab5a")),
+            decreasing=dict(marker=dict(color="#f47067")),
+            totals=dict(marker=dict(color="#539bf5")),
             hovertemplate="%{x}<br>$%{y:,.0f}<extra></extra>",
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title="USD", gridcolor="rgba(48,54,61,0.45)", zeroline=True, zerolinecolor="#6e7681")
+    fig.update_yaxes(title="USD", gridcolor="rgba(55,59,68,0.45)", zeroline=True, zerolinecolor="#6e7681")
     fig.update_xaxes(tickangle=-25)
     return render(_layout(fig, 340))
 
@@ -377,17 +377,17 @@ def pnl_trend(pnl: pd.DataFrame, basis: str) -> str:
     if df.empty or df["Income"].abs().sum() == 0:
         return empty("No P&L data")
     fig = go.Figure()
-    fig.add_bar(x=df["Month"], y=df["Income"], name="Income", marker=dict(color="#2d8659"),
+    fig.add_bar(x=df["Month"], y=df["Income"], name="Income", marker=dict(color="#57ab5a"),
                 hovertemplate="%{x|%b %Y}<br>Income $%{y:,.0f}<extra></extra>")
     fig.add_bar(x=df["Month"], y=df["Cost"], name="Cost", marker=dict(color="#f778ba88"),
                 hovertemplate="%{x|%b %Y}<br>Cost $%{y:,.0f}<extra></extra>")
     fig.add_scatter(x=df["Month"], y=df["NetIncome"], name="Net Income", mode="lines+markers",
-                    line=dict(color="#4a90d9", width=3), marker=dict(size=6),
+                    line=dict(color="#539bf5", width=3), marker=dict(size=6),
                     hovertemplate="%{x|%b %Y}<br>Net $%{y:,.0f}<extra></extra>")
     fig.update_layout(barmode="group", showlegend=True,
                       legend=dict(orientation="h", y=1.12, x=0))
-    fig.update_yaxes(title="USD", gridcolor="rgba(48,54,61,0.45)", zeroline=True, zerolinecolor="#6e7681")
-    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", tickformat="%b %Y", tickangle=-30)
+    fig.update_yaxes(title="USD", gridcolor="rgba(55,59,68,0.45)", zeroline=True, zerolinecolor="#6e7681")
+    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", tickformat="%b %Y", tickangle=-30)
     return render(_layout(fig, 340))
 
 
@@ -400,12 +400,12 @@ def pnl_expenses(pnl_detail: pd.DataFrame, basis: str, start, end, n: int = 10) 
     fig = go.Figure(
         go.Bar(
             x=g["amount"], y=g["account"], orientation="h",
-            marker=dict(color="#c23b3b"),
+            marker=dict(color="#f47067"),
             hovertemplate="%{y}<br>$%{x:,.0f}<extra></extra>",
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Expense (USD)", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title="Expense (USD)", gridcolor="rgba(55,59,68,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(280, 30 * len(g))))
 
@@ -430,7 +430,7 @@ def accounts_by_type(accounts: pd.DataFrame) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Balance magnitude (USD)", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title="Balance magnitude (USD)", gridcolor="rgba(55,59,68,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 30 * len(g))))
 
@@ -460,8 +460,8 @@ def dso_trend(invoices: pd.DataFrame, start, end) -> str:
             hovertemplate="%{x|%b %Y}<br>DSO: %{y:.1f} days<extra></extra>",
         )
     fig.update_layout(showlegend=True, legend=dict(orientation="h", y=1.12, x=0))
-    fig.update_yaxes(title="Days", gridcolor="rgba(48,54,61,0.45)")
-    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", tickformat="%b %Y", tickangle=-30)
+    fig.update_yaxes(title="Days", gridcolor="rgba(55,59,68,0.45)")
+    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", tickformat="%b %Y", tickangle=-30)
     return render(_layout(fig, 320))
 
 
@@ -489,8 +489,8 @@ def revenue_by_customer_monthly(invoices: pd.DataFrame, start, end) -> str:
         legend=dict(orientation="v", font=dict(size=10), x=1.05, y=0.5),
         margin=dict(l=10, r=130, t=10, b=10),
     )
-    fig.update_yaxes(title="Revenue", gridcolor="rgba(48,54,61,0.45)")
-    fig.update_xaxes(title=None, gridcolor="rgba(48,54,61,0.35)", tickformat="%b %Y", tickangle=-30)
+    fig.update_yaxes(title="Revenue", gridcolor="rgba(55,59,68,0.45)")
+    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", tickformat="%b %Y", tickangle=-30)
     return render(_layout(fig, 320))
 
 
@@ -509,7 +509,7 @@ def class_period_ranking(invoices: pd.DataFrame, start, end) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Revenue", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title="Revenue", gridcolor="rgba(55,59,68,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 34 * len(df))))
 
@@ -529,7 +529,7 @@ def location_period_ranking(invoices: pd.DataFrame, start, end) -> str:
         )
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="Revenue", gridcolor="rgba(48,54,61,0.45)")
+    fig.update_xaxes(title="Revenue", gridcolor="rgba(55,59,68,0.45)")
     fig.update_yaxes(title=None)
     return render(_layout(fig, max(260, 34 * len(df))))
 
@@ -551,7 +551,7 @@ def accounts_by_classification(accounts: pd.DataFrame) -> str:
             labels=g["Classification"],
             values=g["absBal"],
             hole=0.55,
-            marker=dict(colors=SEQ, line=dict(color="rgba(48,54,61,0.6)", width=1)),
+            marker=dict(colors=SEQ, line=dict(color="rgba(55,59,68,0.6)", width=1)),
             textinfo="label+percent",
             textposition=textpositions,
             insidetextorientation="radial",

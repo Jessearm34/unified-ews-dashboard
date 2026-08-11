@@ -107,7 +107,6 @@ def _gt_section_impl(section: str, range_key: str):
         tr = GT.daily_trends(since, until)
         ut = GT.vehicle_utilization(since, until)
         il = GT.idling_summary(since, until)
-        ic = GT.idling_cost(since, until)
 
         total_trips = sum(r.get("trips", 0) for r in tr) if tr else 0
         total_hrs = sum(u["hours_driven"] for u in ut) if ut else 0
@@ -117,8 +116,7 @@ def _gt_section_impl(section: str, range_key: str):
             _kpi_dict("Fleet Miles", s["total_fleet_miles"]),
             _kpi_dict("Total Trips", total_trips),
             _kpi_dict("Drive Hours", round(total_hrs)),
-            _kpi_dict("Idle Cost", round(ic['estimated_cost']), unit="$",
-                      hint=f"{ic['total_idle_hours']} hrs · ${ic['cost_per_hour']:.0f}/hr"),
+            _kpi_dict("Idle Hours", round(il["total_idle_hours"]), hint="Engine idling time"),
         ]
 
         charts = {}

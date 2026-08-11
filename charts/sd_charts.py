@@ -308,26 +308,49 @@ def schedules_overview(sched: pd.DataFrame) -> str:
 
 
 def overdue_items_list(schedules: pd.DataFrame) -> str:
-    """HTML table of overdue/late schedule items."""
+    """HTML table of overdue/late items. Items >30 days hidden behind toggle."""
     df = D.overdue_items(schedules)
     if df.empty:
         return empty("No overdue items — all schedules on track")
-    rows = []
-    for _, r in df.iterrows():
-        status = r.get("status", "")
-        badge_cls = "badge red" if status == "Overdue" else "badge warn"
-        due = str(r.get("formDueOn", ""))[:10] if pd.notna(r.get("formDueOn")) else "—"
-        days = int(r.get("daysOverdue", 0))
-        rows.append(f"""<tr>
-            <td>{r.get('formTypeName','—')[:40]}</td>
-            <td>{r.get('locationName','—')[:20]}</td>
-            <td>{r.get('responsibleEmployeeName','—')[:20]}</td>
-            <td><span class='{badge_cls}'>{status}</span></td>
-            <td>{due}</td>
-            <td class='num'>{days}d</td>
-        </tr>""")
+
+    recent = df[df["daysOverdue"] <= 30]
+    older = df[df["daysOverdue"] > 30]
+
+    def _build_rows(data):
+        rows = []
+        for _, r in data.iterrows():
+            status = r.get("status", "")
+            badge_cls = "badge red" if status == "Overdue" else "badge warn"
+            due = str(r.get("formDueOn", ""))[:10] if pd.notna(r.get("formDueOn")) else "—"
+            days = int(r.get("daysOverdue", 0))
+            rows.append(f"""<tr>
+                <td>{r.get('formTypeName','—')[:40]}</td>
+                <td>{r.get('locationName','—')[:20]}</td>
+                <td>{r.get('responsibleEmployeeName','—')[:20]}</td>
+                <td><span class='{badge_cls}'>{status}</span></td>
+                <td>{due}</td>
+                <td class='num'>{days}d</td>
+            </tr>""")
+        return rows
+
+    recent_rows = _build_rows(recent)
+    older_rows = _build_rows(older)
     header = """<tr><th>Form</th><th>Location</th><th>Worker</th><th>Status</th><th>Due</th><th>Overdue</th></tr>"""
-    return f"""<div class='tbl-wrap'><table class='data'><thead>{header}</thead><tbody>{"".join(rows)}</tbody></table></div>"""
+
+    older_html = ""
+    if older_rows:
+        older_html = f"""
+        <details style="margin-top:8px">
+            <summary style="cursor:pointer;font-size:11px;color:var(--ink-dim);padding:4px 0">
+                {len(older)} items over 30 days — click to show
+            </summary>
+            <table class='data'><thead>{header}</thead><tbody>{"".join(older_rows)}</tbody></table>
+        </details>"""
+
+    return f"""<div class='tbl-wrap'>
+        <table class='data'><thead>{header}</thead><tbody>{"".join(recent_rows)}</tbody></table>
+        {older_html}
+    </div>"""
 
 
 def worker_leaderboard_table(workers: pd.DataFrame, forms: pd.DataFrame,

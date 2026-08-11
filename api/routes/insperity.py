@@ -67,6 +67,11 @@ async def insperity_workers():
     charts = {"worker-table": {"html": table_html, "title": f"Workers ({total})",
                                 "help": "Employee roster from Insperity — Field (Direct) vs Shop (Indirect)"}}
 
+    
+    # Filter zero/null KPIs and empty charts
+    kpis = [k for k in kpis if str(k.get("value","")).strip() not in ("$0","0","0d","—","0.0%","$0.00","") and k.get("value") not in (0,0.0,None)]
+    charts = {k:v for k,v in charts.items() if "chart-empty" not in str(v.get("html",""))}
+
     return {
         "kpis": kpis,
         "charts": charts,

@@ -350,8 +350,9 @@ def qb_section(
 
     kpis, charts = handler(ds, invoices, start, end, basis, metric)
 
-    # Filter out zero/null-data KPIs (except "this month" type hints)
-    kpis = [k for k in kpis if k.get("value") not in ("$0", "0", "0d", "—") and k.get("value") != 0]
+    # Filter out zero/null-data KPIs and charts
+    kpis = [k for k in kpis if str(k.get("value", "")).strip() not in ("$0", "0", "0d", "—", "0.0%", "$0.00", "") and k.get("value") != 0 and k.get("value") != 0.0]
+    charts = {k: v for k, v in charts.items() if "chart-empty" not in str(v.get("html", ""))}
 
     return {
         "kpis": kpis, "charts": charts,

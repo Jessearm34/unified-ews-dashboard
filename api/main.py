@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -113,6 +114,9 @@ app.add_middleware(
 
 # -- Sessions ----------------------------------------------------------------
 app.add_middleware(SessionMiddleware, secret_key=cfg.SESSION_SECRET)
+
+# -- Compression — GZip all text responses (JSON, HTML, CSS, JS) ---------------
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 # -- Error logging middleware --------------------------------------------------
@@ -351,7 +355,10 @@ async def catch_all(request: Request, path: str):
     if path.startswith("_app/") or path in ("favicon.png", "favicon.ico"):
         file_path = _BUILD_DIR / path
         if file_path.is_file():
-            return FileResponse(file_path)
+            resp = FileResponse(file_path)
+            # Cache aggressively — filenames are content-hashed by SvelteKit
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
         return JSONResponse(
             {"error": f"Asset '{path}' not found"}, status_code=404
         )

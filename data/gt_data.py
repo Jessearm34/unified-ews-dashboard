@@ -32,7 +32,7 @@ def gt_engine():
     url = gt_get_db_url()
     if not url:
         return None
-    return create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
+    return create_engine(url, pool_size=3, max_overflow=5, pool_recycle=1800, connect_args={"connect_timeout": 5})
 
 
 def gt_conn():

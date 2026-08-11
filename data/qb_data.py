@@ -42,8 +42,7 @@ except RuntimeError as e:
 
 @lru_cache(maxsize=1)
 def qb_engine():
-    # added pool_recycle to ensure connections are refreshed before DB timeouts
-    return create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
+    return create_engine(DATABASE_URL, pool_size=3, max_overflow=5, pool_recycle=1800)
 
 
 def qb_read_table(table: str) -> pd.DataFrame:

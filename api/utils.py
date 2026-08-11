@@ -5,32 +5,58 @@ from typing import Optional
 
 
 def resolve_date_range(range_key, end_date: Optional[date] = None):
-    """Return (start, end) where end is the last completed month."""
-    if end_date is None:
-        end_date = date.today()
-    # End of last completed month = 1st of current month - 1 day
-    end = date(end_date.year, end_date.month, 1) - timedelta(days=1)
-    if end < date(2020, 1, 1):
-        end = end_date  # fallback if something weird
+    """Return (start, end) for a date range key.
+
+    YTD: Jan 1 to today (actual year-to-date)
+    LM:  Last full calendar month
+    LQ:  Last full calendar quarter
+    LY:  Last full calendar year
+    """
+    today = end_date or date.today()
+
     if range_key == "ytd":
-        return date(end.year, 1, 1), end
-    if range_key == "30d":
-        return end - timedelta(days=30), end
-    if range_key == "90d":
-        return end - timedelta(days=90), end
+        return date(today.year, 1, 1), today
+
     if range_key == "lm":
-        # Last completed month
-        lm_end = date(end.year, end.month, 1) - timedelta(days=1)
-        lm_start = date(lm_end.year, lm_end.month, 1)
-        return lm_start, lm_end
-    if range_key == "12m":
-        return date(end.year - 1, 1, 1), date(end.year - 1, 12, 31)
+        # Last full month — go back to first of this month, then back one day
+        first_of_this_month = date(today.year, today.month, 1)
+        last_of_last_month = first_of_this_month - timedelta(days=1)
+        first_of_last_month = date(last_of_last_month.year, last_of_last_month.month, 1)
+        return first_of_last_month, last_of_last_month
+
+    if range_key == "lq":
+        # Last full calendar quarter
+        current_quarter = (today.month - 1) // 3
+        if current_quarter == 0:
+            # Q1 — last quarter was Q4 of previous year
+            return date(today.year - 1, 10, 1), date(today.year - 1, 12, 31)
+        else:
+            q_start_month = (current_quarter - 1) * 3 + 1
+            q_end_month = q_start_month + 2
+            q_end_day = 31 if q_end_month in (3, 12) else 30
+            return date(today.year, q_start_month, 1), date(today.year, q_end_month, q_end_day)
+
     if range_key == "ly":
-        return date(end.year - 1, 1, 1), date(end.year - 1, 12, 31)
-    return date(2020, 1, 1), end
+        # Last full calendar year
+        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
+
+    if range_key == "30d":
+        return today - timedelta(days=30), today
+
+    if range_key == "90d":
+        return today - timedelta(days=90), today
+
+    # "all" — everything from 2020 onward
+    return date(2020, 1, 1), today
 
 
-RANGE_PRESETS = [("ytd", "YTD"), ("lm", "Last month"), ("30d", "30d"), ("90d", "90d"), ("ly", "Last year"), ("all", "All")]
+RANGE_PRESETS = [
+    ("ytd", "YTD"),
+    ("lm", "Last Month"),
+    ("lq", "Last Quarter"),
+    ("ly", "Last Year"),
+    ("all", "All"),
+]
 
 
 def _rgba(h: str, a: float) -> str:
@@ -46,27 +72,20 @@ def empty(msg: str = "No data for this period"):
 
 
 def previous_range(range_key: str, start: date, end: date) -> tuple[date, date]:
-    """Return the previous equivalent time range for comparison.
-
-    For "ytd": previous year YTD
-    For "30d"/"90d": shift both dates back by the same duration
-    For "lm": two months ago (previous complete month)
-    For "ly": the year before last year
-    For "all"/default: same range (no delta possible)
-    """
+    """Return the previous equivalent time range for comparison."""
     duration = (end - start).days
     if range_key == "ytd":
-        # Compare to same period last year
         return date(start.year - 1, start.month, start.day), date(end.year - 1, end.month, end.day)
     if range_key == "lm":
         lm_end = date(start.year, start.month, 1) - timedelta(days=1)
         lm_start = date(lm_end.year, lm_end.month, 1)
         return lm_start, lm_end
+    if range_key == "lq":
+        return start - timedelta(days=91), end - timedelta(days=91)
+    if range_key == "ly":
+        return date(start.year - 1, 1, 1), date(start.year - 1, 12, 31)
     if range_key in ("30d", "90d"):
         return start - timedelta(days=duration), end - timedelta(days=duration)
-    if range_key == "ly":
-        return date(start.year - 2, 1, 1), date(start.year - 2, 12, 31)
-    # For "all" and custom, same range (no real comparison)
     return start, end
 
 

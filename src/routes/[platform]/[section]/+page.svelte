@@ -18,7 +18,7 @@
 	let currentSection = $state('');
 	let refreshInterval = $state(null);
 
-	const rangePresets = [['ytd','YTD'],['lm','Last month'],['30d','30d'],['90d','90d'],['ly','Last year'],['all','All']];
+		const rangePresets = [['ytd','YTD'],['lm','Last Month'],['lq','Last Quarter'],['ly','Last Year'],['all','All']];
 	const qbRangePresets = [...rangePresets];
 	const qbBasisOptions = [['accrual','Accrual'],['cash','Cash']];
 

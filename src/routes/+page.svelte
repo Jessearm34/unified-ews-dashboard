@@ -17,7 +17,7 @@
 	let refreshInterval = $state(null);
 	let compare = $state(false);
 
-	const rangePresets = [['ytd','YTD'],['lm','Last month'],['30d','30d'],['90d','90d'],['ly','Last year'],['all','All']];
+		const rangePresets = [['ytd','YTD'],['lm','Last Month'],['lq','Last Quarter'],['ly','Last Year'],['all','All']];
 
 	async function load(rangeKey = range, silent = false) {
 		if (!silent) isLoading = true;

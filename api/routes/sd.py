@@ -11,7 +11,6 @@ from api.cache import cached
 from data import sd_data as SD
 from charts import sd_charts as SDC
 
-# Houston timezone
 try:
     from zoneinfo import ZoneInfo
     _HOUSTON = ZoneInfo("America/Chicago")
@@ -20,29 +19,40 @@ except Exception:
 
 router = APIRouter()
 
+
 def _load_sd():
     ds = SD.sd_load_dataset()
     if ds and ds.has_data:
         return ds
     return None
 
-def _kpi_dict(label, value, unit="", hint="", rag=None, platform="SD", delta=None, delta_up_good=True, help="", delta_label=""):
+
+def _kpi(label, value, unit="", hint="", rag=None, delta=None, delta_up_good=True, help=""):
     if isinstance(value, (int, float)):
-        return {"label": label, "value": value, "unit": unit, "hint": hint or "", "rag": rag, "platform": platform, "delta": delta, "delta_up_good": delta_up_good, "help": help, "deltaLabel": delta_label}
-    return {"label": label, "value": 0, "unit": unit, "hint": str(value) if value else "", "rag": rag, "platform": platform, "delta": delta, "delta_up_good": delta_up_good, "help": help, "deltaLabel": delta_label}
+        return {"label": label, "value": value, "unit": unit, "hint": hint or "", "rag": rag,
+                "platform": "", "delta": delta, "delta_up_good": delta_up_good, "help": help, "deltaLabel": ""}
+    return {"label": label, "value": 0, "unit": unit, "hint": str(value) if value else "", "rag": rag,
+            "platform": "", "delta": delta, "delta_up_good": delta_up_good, "help": help, "deltaLabel": ""}
+
+
+def _rag(v, g, a, gh=True):
+    if gh:
+        if v >= g: return "green"
+        if v >= a: return "amber"
+        return "red"
+    if v <= g: return "green"
+    if v <= a: return "amber"
+    return "red"
 
 
 @router.get("/_api/sd/{section}")
 async def sd_section(section: str = "hse",
-                     compare: bool = Query(False, description="Show year-over-year overlay on trend charts")):
+                     compare: bool = Query(False)):
     ds = cached("sd", _load_sd)
     if not ds:
-        return {"kpis": [], "charts": {}, "loaded_at": datetime.now(_HOUSTON).isoformat(), "has_more": {}}
+        return {"kpis": [], "charts": {}, "loaded_at": datetime.now(_HOUSTON).isoformat()}
 
-    has_qb = bool(cached("qb", lambda: None))
     now_iso = datetime.now(_HOUSTON).isoformat()
-
-    # Compute compare_forms if requested (last year same months)
     compare_forms = None
     if compare and not ds.forms.empty:
         try:
@@ -61,134 +71,132 @@ async def sd_section(section: str = "hse",
 
     if section == "hse":
         sched_c = SD.schedule_counts(ds.schedules)
-        f_count = SD.form_counts(ds.forms)
-        part = SD.worker_participation(ds.workers, ds.forms)
         brc = SD.bbso_rir_counts(ds.forms)
-        bir = SD.bbso_incident_ratio(ds.forms, ds.incidents)
-        rir_ratio = SD.rir_incident_ratio(ds.forms, ds.incidents)
-        close_time = SD.incident_close_time(ds.incidents)
-
-        def _rag_for_value(v, green, amber, good_when_high=True):
-            if good_when_high:
-                if v >= green: return "green"
-                if v >= amber: return "amber"
-                return "red"
-            else:
-                if v <= green: return "green"
-                if v <= amber: return "amber"
-                return "red"
 
         kpis = [
-            _kpi_dict("Schedule Compliance", sched_c["completion_pct"], "%",
-                      rag=_rag_for_value(sched_c["completion_pct"], 80, 60)),
-            _kpi_dict("Overdue Items", float(sched_c["overdue"]), "",
-                      rag=_rag_for_value(sched_c["overdue"], 5, 15, False)),
-            _kpi_dict("BBSO Observations", float(brc["total_bbso"]), "",
-                      hint=f"{brc['bbso_this_month']} this month · {brc['bbso_contributors']} observers",
-                      help="Behavior-based safety observations track proactive safety engagement by category (PPE, housekeeping, line of fire, etc.)"),
-            _kpi_dict("RIR / Near Miss Reports", float(brc["total_rir"]), "",
-                      hint=f"{brc['rir_this_month']} this month · {brc['rir_contributors']} reporters",
-                      help="Recordable incident reports and near-miss reports — captures events before they become injuries"),
-            _kpi_dict("Worker Participation", part["pct"], "%",
-                      rag=_rag_for_value(part["pct"], 80, 60),
-                      help="Percentage of active workers who submitted at least one safety form this month"),
-            _kpi_dict("BBSO:Incident Ratio", float(bir["ratio"]), ":1",
-                      hint=f"{bir['total_bbso']} BBSO · {bir['total_incidents']} incidents",
-                      rag=_rag_for_value(bir["ratio"], 5, 2),
-                      help="Leading indicator — proactive observations per actual incident. >5:1 indicates strong safety culture"),
-            _kpi_dict("Reporting Culture Index", float(rir_ratio["ratio"]), ":1",
-                      hint=f"{rir_ratio['total_rir']} RIRs · {rir_ratio['total_incidents']} incidents",
-                      rag=_rag_for_value(rir_ratio["ratio"], 5, 2),
-                      help="Near-miss reporting rate — high values show people report hazards before they cause injuries"),
-            _kpi_dict("Avg Incident Close Time", float(close_time["mean_days"]), "days",
-                      hint=f"median {close_time['median_days']}d · {close_time['closed_count']} closed",
-                      rag=_rag_for_value(close_time["mean_days"], 14, 30, False)),
+            _kpi("Schedule Compliance", sched_c["completion_pct"], "%",
+                 rag=_rag(sched_c["completion_pct"], 80, 60),
+                 help="Percentage of scheduled safety activities completed on time"),
+            _kpi("Overdue Items", float(sched_c["overdue"]), "",
+                 rag=_rag(sched_c["overdue"], 5, 15, False),
+                 help="Safety tasks past their due date — items over 30 days hidden"),
+            _kpi("BBSO Observations", float(brc["total_bbso"]), "",
+                 hint=f"{brc['bbso_this_month']} this month · {brc['bbso_contributors']} observers",
+                 help="Behavior-Based Safety Observations — proactive safety engagement by category"),
+            _kpi("RIR / Near Miss", float(brc["total_rir"]), "",
+                 hint=f"{brc['rir_this_month']} this month · {brc['rir_contributors']} reporters",
+                 help="Recordable Incident Reports and near-miss reports — captures events before injuries"),
         ]
 
         charts = {
-            "safety_profile": {"html": SDC.safety_profile_table(ds.workers, ds.forms), "title": "Safety Profile"},
-            "observer_leaderboard": {"html": SDC.observer_leaderboard_table(ds.workers, ds.forms), "title": "Top BBSO Observers"},
-            "reporter_leaderboard": {"html": SDC.reporter_leaderboard_table(ds.workers, ds.forms), "title": "Top RIR Reporters"},
-            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly BBSO Trend"},
-            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly RIR Trend"},
-            "bbso_risk_heatmap": {"html": SDC.bbso_risk_heatmap(ds.forms, ds.form_responses), "title": "BBSO Risk by Category"},
-            "schedule_compliance": {"html": SDC.schedule_compliance(ds.schedules), "title": "Schedule Compliance"},
-            "form_category": {"html": SDC.form_category_chart(ds.forms), "title": "Forms by Category"},
+            "safety_profile": {"html": SDC.safety_profile_table(ds.workers, ds.forms),
+                              "title": "Safety Profile",
+                              "help": "Per-worker breakdown of BBSO and RIR submissions"},
+            "observer_leaderboard": {"html": SDC.observer_leaderboard_table(ds.workers, ds.forms),
+                                    "title": "Top BBSO Observers",
+                                    "help": "Workers ranked by behavior-based safety observation count"},
+            "reporter_leaderboard": {"html": SDC.reporter_leaderboard_table(ds.workers, ds.forms),
+                                    "title": "Top RIR Reporters",
+                                    "help": "Workers ranked by incident/near-miss report count"},
+            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms),
+                          "title": "Monthly BBSO Trend",
+                          "help": "Behavior-based safety observations per month — leading indicator"},
+            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms),
+                         "title": "Monthly RIR Trend",
+                         "help": "Recordable incident reports per month"},
+            "schedule_compliance": {"html": SDC.schedule_compliance(ds.schedules),
+                                   "title": "Schedule Compliance",
+                                   "help": "Scheduled safety activities — completed, overdue, and cancelled"},
+            "form_category": {"html": SDC.form_category_chart(ds.forms),
+                             "title": "Forms by Category",
+                             "help": "Distribution of safety form types submitted"},
         }
-        if hasattr(ds, 'form_responses') and not ds.form_responses.empty:
-            charts["rir_events"] = {"html": SDC.rir_events_from_forms(ds.forms, ds.workers, ds.incidents, ds.locations), "title": "Recent RIR Events"}
-
-        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
+        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso}
 
     elif section == "forms":
         f_count = SD.form_counts(ds.forms)
         w_count = SD.worker_counts(ds.workers)
         brc = SD.bbso_rir_counts(ds.forms)
         kpis = [
-            _kpi_dict("Total Forms", float(f_count["total"]), ""),
-            _kpi_dict("This Month", float(f_count["month"]), ""),
-            _kpi_dict("BBSO", float(brc["total_bbso"]), "", hint=f"{brc['bbso_this_month']} this month"),
-            _kpi_dict("RIR / Near Miss", float(brc["total_rir"]), "", hint=f"{brc['rir_this_month']} this month"),
-            _kpi_dict("Active Workers", float(w_count["active"]), ""),
+            _kpi("Total Forms", float(f_count["total"]), "",
+                 help="All safety forms submitted across the platform"),
+            _kpi("This Month", float(f_count["month"]), "",
+                 help="Forms submitted in the current calendar month"),
+            _kpi("BBSO", float(brc["total_bbso"]), "",
+                 hint=f"{brc['bbso_this_month']} this month"),
+            _kpi("RIR / Near Miss", float(brc["total_rir"]), "",
+                 hint=f"{brc['rir_this_month']} this month"),
+            _kpi("Active Workers", float(w_count["active"]), ""),
         ]
         charts = {
-            "form_category": {"html": SDC.form_category_chart(ds.forms), "title": "Forms by Category"},
-            "forms_trend": {"html": SDC.forms_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly Trend"},
-            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly BBSO Trend"},
-            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly RIR Trend"},
-            "form_types": {"html": SDC.form_types_chart(ds.formtypes, ds.forms), "title": "Forms by Type"},
+            "form_category": {"html": SDC.form_category_chart(ds.forms),
+                             "title": "Forms by Category",
+                             "help": "Distribution of safety form types submitted"},
+            "forms_trend": {"html": SDC.forms_trend(ds.forms, compare_forms=compare_forms),
+                           "title": "Monthly Trend",
+                           "help": "Total forms submitted per month"},
+            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms),
+                          "title": "Monthly BBSO Trend",
+                          "help": "Behavior-based safety observations per month"},
+            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms),
+                         "title": "Monthly RIR Trend",
+                         "help": "Recordable incident reports per month"},
         }
-        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
+        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso}
 
     elif section == "compliance":
         sched_c = SD.schedule_counts(ds.schedules)
         brc = SD.bbso_rir_counts(ds.forms)
-
-        def _rag(v, g, a, gh=True):
-            if gh:
-                if v >= g: return "green"
-                if v >= a: return "amber"
-                return "red"
-            else:
-                if v <= g: return "green"
-                if v <= a: return "amber"
-                return "red"
-
         kpis = [
-            _kpi_dict("Completion Rate", sched_c["completion_pct"], "%", rag=_rag(sched_c["completion_pct"], 80, 60)),
-            _kpi_dict("Overdue", float(sched_c["overdue"]), "", rag=_rag(sched_c["overdue"], 5, 15, False)),
-            _kpi_dict("Late", float(sched_c["late"]), ""),
-            _kpi_dict("Cancelled", float(sched_c["cancelled"]), ""),
-            _kpi_dict("BBSO This Month", float(brc["bbso_this_month"]), "", hint=f"{brc['total_bbso']} total"),
-            _kpi_dict("RIR This Month", float(brc["rir_this_month"]), "", hint=f"{brc['total_rir']} total"),
+            _kpi("Completion Rate", sched_c["completion_pct"], "%",
+                 rag=_rag(sched_c["completion_pct"], 80, 60)),
+            _kpi("Overdue", float(sched_c["overdue"]), "",
+                 rag=_rag(sched_c["overdue"], 5, 15, False)),
+            _kpi("Late", float(sched_c["late"]), ""),
+            _kpi("Cancelled", float(sched_c["cancelled"]), ""),
+            _kpi("BBSO This Month", float(brc["bbso_this_month"]), "",
+                 hint=f"{brc['total_bbso']} total"),
+            _kpi("RIR This Month", float(brc["rir_this_month"]), "",
+                 hint=f"{brc['total_rir']} total"),
         ]
         charts = {
-            "schedule_compliance": {"html": SDC.schedule_compliance(ds.schedules), "title": "Schedule Compliance"},
-            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly BBSO Trend"},
-            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms), "title": "Monthly RIR Trend"},
-            "forms_trend": {"html": SDC.forms_trend(ds.forms, compare_forms=compare_forms), "title": "Forms Trend"},
-            "leaderboard": {"html": SDC.bbso_rir_leaderboard_table(ds.workers, ds.forms), "title": "BBSO & RIR by Worker"},
-            "overdue": {"html": SDC.overdue_items_list(ds.schedules), "title": "Overdue & Late Items"},
+            "schedule_compliance": {"html": SDC.schedule_compliance(ds.schedules),
+                                   "title": "Schedule Compliance",
+                                   "help": "Scheduled safety activities — completed, overdue, and cancelled"},
+            "bbso_trend": {"html": SDC.bbso_trend(ds.forms, compare_forms=compare_forms),
+                          "title": "Monthly BBSO Trend"},
+            "rir_trend": {"html": SDC.rir_trend(ds.forms, compare_forms=compare_forms),
+                         "title": "Monthly RIR Trend"},
+            "overdue": {"html": SDC.overdue_items_list(ds.schedules),
+                       "title": "Overdue & Late Items",
+                       "help": "Items past due (over 30 days hidden as resolved)"},
         }
-        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
+        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso}
 
     elif section == "workers":
         w_count = SD.worker_counts(ds.workers)
-        part = SD.worker_participation(ds.workers, ds.forms)
         brc = SD.bbso_rir_counts(ds.forms)
         kpis = [
-            _kpi_dict("Active Workers", float(w_count["active"]), "", hint=f"of {w_count['total']} total"),
-            _kpi_dict("Contractors", float(w_count["contractors"]), "", hint=f"{w_count['employees']} employees"),
-            _kpi_dict("Participation", part["pct"], "%", rag="green" if part["pct"] >= 80 else "amber" if part["pct"] >= 60 else "red"),
-            _kpi_dict("BBSO Contributors", float(brc["bbso_contributors"]), "", hint=f"{brc['total_bbso']} total BBSOs"),
-            _kpi_dict("RIR Contributors", float(brc["rir_contributors"]), "", hint=f"{brc['total_rir']} total RIRs"),
+            _kpi("Active Workers", float(w_count["active"]), "",
+                 hint=f"of {w_count['total']} total"),
+            _kpi("Contractors", float(w_count["contractors"]), "",
+                 hint=f"{w_count['employees']} employees"),
+            _kpi("BBSO Contributors", float(brc["bbso_contributors"]), "",
+                 hint=f"{brc['total_bbso']} total BBSOs"),
+            _kpi("RIR Contributors", float(brc["rir_contributors"]), "",
+                 hint=f"{brc['total_rir']} total RIRs"),
         ]
         charts = {
-            "status": {"html": SDC.worker_status(ds.workers), "title": "Active vs Inactive"},
-            "type_split": {"html": SDC.worker_type_split(ds.workers), "title": "Employee vs Contractor"},
-            "leaderboard": {"html": SDC.bbso_rir_leaderboard_table(ds.workers, ds.forms), "title": "BBSO & RIR by Worker"},
-            "activity": {"html": SDC.worker_leaderboard_table(ds.workers, ds.forms, ds.signatures, ds.schedules), "title": "Worker Activity"},
+            "status": {"html": SDC.worker_status(ds.workers),
+                      "title": "Active vs Inactive",
+                      "help": "Workers currently active in the SiteDocs platform"},
+            "type_split": {"html": SDC.worker_type_split(ds.workers),
+                          "title": "Employee vs Contractor",
+                          "help": "Workforce composition — employee vs contractor ratio"},
+            "leaderboard": {"html": SDC.bbso_rir_leaderboard_table(ds.workers, ds.forms),
+                           "title": "BBSO & RIR by Worker",
+                           "help": "Per-worker safety observation and incident report counts"},
         }
-        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso, "has_more": {}}
+        return {"kpis": kpis, "charts": charts, "loaded_at": now_iso}
 
-    return {"kpis": [], "charts": {}, "loaded_at": now_iso, "has_more": {}}
+    return {"kpis": [], "charts": {}, "loaded_at": now_iso}

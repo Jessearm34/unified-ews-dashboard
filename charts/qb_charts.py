@@ -396,7 +396,7 @@ def pnl_trend(pnl: pd.DataFrame, basis: str) -> str:
     fig = go.Figure()
     fig.add_bar(x=df["Month"], y=df["Income"], name="Income", marker=dict(color="#57ab5a"),
                 hovertemplate="%{x|%b %Y}<br>Income $%{y:,.0f}<extra></extra>")
-    fig.add_bar(x=df["Month"], y=df["Cost"], name="Cost", marker=dict(color="#f778ba88"),
+    fig.add_bar(x=df["Month"], y=df["Cost"], name="Cost", marker=dict(color="rgba(247,120,186,0.53)"),
                 hovertemplate="%{x|%b %Y}<br>Cost $%{y:,.0f}<extra></extra>")
     fig.add_scatter(x=df["Month"], y=df["NetIncome"], name="Net Income", mode="lines+markers",
                     line=dict(color="#539bf5", width=3), marker=dict(size=6),

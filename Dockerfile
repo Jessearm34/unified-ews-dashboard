@@ -17,6 +17,7 @@ COPY api/ ./api/
 COPY data/ ./data/
 COPY charts/ ./charts/
 COPY static/ ./static/
+COPY refresh/ ./refresh/
 
 RUN date > /app/.build_ts
 

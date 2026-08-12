@@ -1,0 +1,16 @@
+# QuickBooks query exports — edit queries to add Vendor, Bill, etc.
+# https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/account
+#
+# Note: the ProfitAndLoss *report* (accrual + cash, by month) is NOT a query and
+# is fetched separately in src/quickbooks_client.py (_fetch_pnl_sheets), landing
+# in the quickbooks_pnl / quickbooks_pnl_detail warehouse tables.
+
+# Pagination is automatic (STARTPOSITION loop in the client), so no MAXRESULTS
+# is needed here — all rows are fetched even past the 1000-row API page limit.
+datasets:
+  - name: customers
+    query: "SELECT * FROM Customer"
+  - name: invoices
+    query: "SELECT * FROM Invoice"
+  - name: accounts
+    query: "SELECT * FROM Account"

@@ -21,6 +21,8 @@ from api.utils import resolve_date_range
 from data import qb_data as QB
 from charts import qb_charts as QBC
 
+import pandas as pd
+
 router = APIRouter()
 
 
@@ -99,7 +101,6 @@ def _invoice_table(invoices, limit=60):
 # ── Customer table — matches eww-dashboard-public customer_table ─────
 
 def _customer_table(ds, invoices):
-    import pandas as pd
     billed = invoices.groupby("CustomerId")["Revenue"].sum().rename("Billed")
     c = ds.customers.merge(billed, left_on="Id", right_index=True, how="left")
     c["Billed"] = c["Billed"].fillna(0.0)

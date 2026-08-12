@@ -8,7 +8,7 @@ sync_metadata, sync_logs.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -76,7 +76,7 @@ class Trip(Base, TimestampMixin):
     maximum_speed: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     driving_duration: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     engine_hours: Mapped[float] = mapped_column(Float, nullable=False, default=0)
-    is_seatbelt_off: Mapped[Optional[bool]] = mapped_column(Integer, nullable=True)
+    is_seatbelt_off: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     after_hours_distance: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     work_distance: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     stop_duration: Mapped[float] = mapped_column(Float, nullable=False, default=0)

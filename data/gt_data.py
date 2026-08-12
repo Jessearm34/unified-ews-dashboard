@@ -287,8 +287,8 @@ def seatbelt_analysis(since: datetime | None = None, until: datetime | None = No
         until = datetime.now(timezone.utc)
     return _exec(
         "SELECT DATE(start_time) as day, COUNT(*) as total_trips, "
-        "COALESCE(SUM(CASE WHEN is_seatbelt_off=1 THEN 1 ELSE 0 END),0) as seatbelt_off, "
-        "COALESCE(SUM(CASE WHEN is_seatbelt_off=0 THEN 1 ELSE 0 END),0) as seatbelt_on "
+        "COALESCE(SUM(CASE WHEN is_seatbelt_off THEN 1 ELSE 0 END),0) as seatbelt_off, "
+        "COALESCE(SUM(CASE WHEN NOT is_seatbelt_off THEN 1 ELSE 0 END),0) as seatbelt_on "
         "FROM trips WHERE start_time BETWEEN :s AND :u AND is_seatbelt_off IS NOT NULL "
         "GROUP BY DATE(start_time) ORDER BY day",
         {"s": since, "u": until}
@@ -302,11 +302,11 @@ def after_hours_analysis(since: datetime | None = None, until: datetime | None =
         until = datetime.now(timezone.utc)
     return _exec(
         "SELECT DATE(start_time) as day, "
-        "COALESCE(SUM(after_hours_distance*:km),0) as after_hours_miles, "
-        "COALESCE(SUM(work_distance*:km),0) as work_miles "
+        "COALESCE(SUM(after_hours_distance),0) as after_hours_miles, "
+        "COALESCE(SUM(work_distance),0) as work_miles "
         "FROM trips WHERE start_time BETWEEN :s AND :u "
         "GROUP BY DATE(start_time) ORDER BY day",
-        {"s": since, "u": until, "km": KM_TO_MILES}
+        {"s": since, "u": until}
     )
 
 
@@ -409,7 +409,7 @@ def safety_driver_rankings(since: datetime | None = None, until: datetime | None
         rows = _exec(
             "SELECT d.name, COUNT(t.id) as trip_count, "
             "COALESCE(SUM(t.distance_miles),0) as miles, "
-            "COALESCE(SUM(CASE WHEN t.is_seatbelt_off=1 THEN 1 ELSE 0 END),0) as seatbelt_violations, "
+            "COALESCE(SUM(CASE WHEN t.is_seatbelt_off THEN 1 ELSE 0 END),0) as seatbelt_violations, "
             "COUNT(CASE WHEN t.is_seatbelt_off IS NOT NULL THEN 1 END) as seatbelt_recorded, "
             "COALESCE(SUM(CASE WHEN t.after_hours_distance>0 THEN 1 ELSE 0 END),0) as after_hours_trips, "
             "COALESCE(SUM(t.idle_time),0) as idle_time, "

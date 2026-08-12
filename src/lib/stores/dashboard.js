@@ -49,16 +49,15 @@ export const platforms = [
 		]
 	},
 
-	// ── Insperity ────────────────────────────────────────────────────
-	{
-		key: 'in',
-		label: 'Insperity',
-		icon: '👤',
-		sections: [
-			{ key: 'workers', label: 'Workers', icon: '👥' },
-			{ key: 'certs', label: 'Certifications', icon: '📜' },
-		]
-	},
+		// ── Insperity ────────────────────────────────────────────────────
+		{
+			key: 'in',
+			label: 'Insperity',
+			icon: '👤',
+			sections: [
+				{ key: 'workers', label: 'Workers', icon: '👥' },
+			]
+		},
 
 	// ── Equipt  (disabled — uncomment when ENABLED = True in data pipeline) ─────
 	// {

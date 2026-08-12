@@ -23,9 +23,9 @@ _CACHE_TIMESTAMP: float = 0.0
 
 @lru_cache(maxsize=1)
 def sd_engine():
-    url = os.environ.get("SD_DATABASE_URL", "")
+    url = os.environ.get("SD_DATABASE_URL", os.environ.get("DATABASE_URL", ""))
     if not url:
-        raise RuntimeError("SD_DATABASE_URL environment variable is not set.")
+        raise RuntimeError("SD_DATABASE_URL (or DATABASE_URL) environment variable is not set.")
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif url.startswith("postgresql://") and "+psycopg2" not in url:

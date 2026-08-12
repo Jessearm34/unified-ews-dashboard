@@ -20,15 +20,15 @@ from sqlalchemy import create_engine
 
 
 def qb_get_db_url():
-    url = os.getenv("QB_DATABASE_URL")
+    url = os.getenv("QB_DATABASE_URL", os.getenv("DATABASE_URL", ""))
     if url:
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg2://", 1)
         return url
-    # No QB_DATABASE_URL set — QB section won't work. Return empty so loaders fail clearly.
+    # No QB_DATABASE_URL (or DATABASE_URL) set — QB section won't work.
     raise RuntimeError(
-        "QB_DATABASE_URL environment variable is not set. "
-        "QuickBooks data cannot be loaded. Set QB_DATABASE_URL in Railway Variables."
+        "QB_DATABASE_URL (or DATABASE_URL) environment variable is not set. "
+        "QuickBooks data cannot be loaded. Set it in Railway Variables."
     )
 
 

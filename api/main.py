@@ -202,9 +202,44 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 
+def _freshness() -> dict:
+    """Read sync_metadata freshness, never raising if the DB/table is unavailable."""
+    try:
+        import os
+        from sqlalchemy import create_engine, text
+        url = os.getenv("DATABASE_URL", "") or os.getenv("QB_DATABASE_URL", "")
+        if not url:
+            return {}
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+        engine = create_engine(url)
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(text(
+                    "SELECT source, last_sync_at, status, row_count FROM refresh_metadata"
+                )).mappings().all()
+        finally:
+            engine.dispose()
+        out = {}
+        for r in rows:
+            ts = r["last_sync_at"]
+            age = None
+            if ts is not None:
+                if getattr(ts, "tzinfo", None) is None:
+                    from datetime import timezone as _tz
+                    ts = ts.replace(tzinfo=_tz.utc)
+                from datetime import datetime as _dt, timezone as _tz2
+                age = int((_dt.now(_tz2.utc) - ts).total_seconds())
+            out[r["source"]] = {"last_sync_at": str(ts), "age_seconds": age,
+                                "status": r["status"], "row_count": r["row_count"]}
+        return out
+    except Exception:
+        return {}
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "diagnostics": _diag or {}}
+    return {"status": "ok", "diagnostics": _diag or {}, "freshness": _freshness()}
 
 
 # ---------------------------------------------------------------------------

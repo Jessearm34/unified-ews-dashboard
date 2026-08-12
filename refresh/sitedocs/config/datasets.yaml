@@ -1,0 +1,13 @@
+# SiteDocs API export datasets — each name maps to a fetcher in sitedocs_client.py.
+datasets:
+  - name: workers
+  - name: equipment
+  - name: incidents
+  - name: certifications
+  - name: forms
+  - name: locations
+  - name: companytypes
+  - name: certificationtypes
+  - name: formtypes
+  - name: signatures
+  - name: schedules

@@ -18,6 +18,8 @@ COPY data/ ./data/
 COPY charts/ ./charts/
 COPY static/ ./static/
 COPY refresh/ ./refresh/
+COPY scripts/ ./scripts/
+COPY refresh_all.py check_freshness.py ./
 
 RUN date > /app/.build_ts
 

@@ -34,7 +34,8 @@ def _get_db_engine():
     try:
         from sqlalchemy import create_engine, text
 
-        url = os.environ.get("DATABASE_URL", "").strip()
+        url = os.environ.get("QB_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
+        url = url.strip()
         if not url:
             return None
         # Normalise legacy postgres:// scheme and ensure SSL

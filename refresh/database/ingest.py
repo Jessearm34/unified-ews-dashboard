@@ -22,9 +22,12 @@ SOURCES: dict[str, Path] = {
 
 
 def get_engine():
-    url = os.environ.get("DATABASE_URL", "").strip()
+    # Prefer QB_DATABASE_URL (where the dashboard reads QuickBooks from);
+    # fall back to DATABASE_URL for the original single-DB layout.
+    url = os.environ.get("QB_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
+    url = url.strip()
     if not url:
-        print("ERROR: DATABASE_URL is not set.")
+        print("ERROR: QB_DATABASE_URL (or DATABASE_URL) is not set.")
         sys.exit(1)
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)

@@ -23,4 +23,4 @@ COPY refresh_all.py check_freshness.py ./
 
 RUN date > /app/.build_ts
 
-CMD ["sh", "-c", "PORT=${PORT:-8000} && uvicorn api.main:app --host 0.0.0.0 --port $PORT --log-level info --no-access-log"]
+CMD ["sh", "-c", "PORT=${PORT:-8080} && uvicorn api.main:app --host 0.0.0.0 --port $PORT --log-level info --no-access-log"]

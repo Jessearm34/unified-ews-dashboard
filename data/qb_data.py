@@ -836,8 +836,8 @@ def dso_trend_series(invoices: pd.DataFrame, start: date, end: date) -> pd.DataF
         ar = cur.loc[cur["RevenueBalance"] > 0, "RevenueBalance"].sum()
         days_in = (m_end - m_start).days + 1
         dso_val = (ar / revenue) * days_in if days_in else None
-        py_start = m_start.replace(year=m_start.year - 1)
-        py_end = m_end.replace(year=m_end.year - 1)
+        py_start = (m_start - pd.DateOffset(years=1)).date()
+        py_end = (m_end - pd.DateOffset(years=1)).date()
         py_mask = (inv["TxnDate_dt"] >= py_start) & (inv["TxnDate_dt"] <= py_end)
         py = inv[py_mask]
         py_revenue = py["Revenue"].sum()

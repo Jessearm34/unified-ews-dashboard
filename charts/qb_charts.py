@@ -35,6 +35,19 @@ def _rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
+def _date_ticks(n_months: int) -> tuple[str, int]:
+    """Return (dtick, tickangle) for a date axis given the number of months."""
+    if n_months <= 12:
+        return "M1", -30
+    if n_months <= 24:
+        return "M2", -30
+    if n_months <= 36:
+        return "M3", 0
+    if n_months <= 60:
+        return "M6", 0
+    return "M12", 0
+
+
 def _layout(fig: go.Figure, height: int = 340) -> go.Figure:
     fig.update_layout(
         template=None,
@@ -144,7 +157,11 @@ def trend(invoices: pd.DataFrame, metric: str, compare_invoices: pd.DataFrame | 
     fig.update_layout(showlegend=compare_invoices is not None and not compare_invoices.empty,
                       legend=dict(orientation="h", y=1.1, font=dict(size=9)))
     fig.update_yaxes(title=ylabel, gridcolor="rgba(55,59,68,0.45)")
-    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", dtick="M1", tickformat="%b %Y", tickangle=-30)
+
+    # Dynamic x-axis tick spacing — avoid label clutter on long ranges
+    dtick, tickangle = _date_ticks(len(df))
+    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)",
+                     dtick=dtick, tickformat="%b %Y", tickangle=tickangle)
     return render(_layout(fig, 320))
 
 
@@ -387,7 +404,8 @@ def pnl_trend(pnl: pd.DataFrame, basis: str) -> str:
     fig.update_layout(barmode="group", showlegend=True,
                       legend=dict(orientation="h", y=1.12, x=0))
     fig.update_yaxes(title="USD", gridcolor="rgba(55,59,68,0.45)", zeroline=True, zerolinecolor="#6e7681")
-    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", tickformat="%b %Y", tickangle=-30)
+    dtick, tickangle = _date_ticks(len(df))
+    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", dtick=dtick, tickformat="%b %Y", tickangle=tickangle)
     return render(_layout(fig, 340))
 
 
@@ -461,7 +479,8 @@ def dso_trend(invoices: pd.DataFrame, start, end) -> str:
         )
     fig.update_layout(showlegend=True, legend=dict(orientation="h", y=1.12, x=0))
     fig.update_yaxes(title="Days", gridcolor="rgba(55,59,68,0.45)")
-    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", tickformat="%b %Y", tickangle=-30)
+    dtick, tickangle = _date_ticks(len(df))
+    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", dtick=dtick, tickformat="%b %Y", tickangle=tickangle)
     return render(_layout(fig, 320))
 
 
@@ -490,7 +509,8 @@ def revenue_by_customer_monthly(invoices: pd.DataFrame, start, end) -> str:
         margin=dict(l=10, r=130, t=10, b=10),
     )
     fig.update_yaxes(title="Revenue", gridcolor="rgba(55,59,68,0.45)")
-    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", tickformat="%b %Y", tickangle=-30)
+    dtick, tickangle = _date_ticks(len(df))
+    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", dtick=dtick, tickformat="%b %Y", tickangle=tickangle)
     return render(_layout(fig, 320))
 
 

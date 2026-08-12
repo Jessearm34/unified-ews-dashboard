@@ -203,7 +203,11 @@ except ImportError:
 
 
 def _freshness() -> dict:
-    """Read sync_metadata freshness, never raising if the DB/table is unavailable."""
+    """Read refresh_metadata freshness, never raising if the DB/table is unavailable.
+
+    Bounded: 3s connect timeout so a slow/unreachable DB can NEVER hang /health.
+    The liveness probe must return instantly — freshness is informational only.
+    """
     try:
         import os
         from sqlalchemy import create_engine, text
@@ -212,7 +216,9 @@ def _freshness() -> dict:
             return {}
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg2://", 1)
-        engine = create_engine(url)
+        elif url.startswith("postgresql://") and "+psycopg2" not in url:
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        engine = create_engine(url, connect_args={"connect_timeout": 3})
         try:
             with engine.connect() as conn:
                 rows = conn.execute(text(

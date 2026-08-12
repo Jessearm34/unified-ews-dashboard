@@ -13,3 +13,4 @@ starlette>=0.40
 itsdangerous>=2.0
 intuit-oauth>=1.2.6
 PyYAML>=6.0
+tenacity>=9.0

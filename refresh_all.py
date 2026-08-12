@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent
 SOURCES: dict[str, Path] = {
     "quickbooks": ROOT / "refresh" / "quickbooks" / "refresh.py",
     "sitedocs": ROOT / "refresh" / "sitedocs" / "refresh.py",
-    # geotab is a separate sync worker (geotab-data-export); not run here.
+    "geotab": ROOT / "refresh" / "geotab" / "refresh.py",
 }
 
 

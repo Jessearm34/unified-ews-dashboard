@@ -332,21 +332,72 @@ _SECTION_HANDLERS = {
 }
 
 
-# ── CSV export — raw normalized table for the current section ──────
+# ── CSV export — CLEAN data matching the displayed tables (numbers, not API noise) ──
 
-def _export_dataframe(section: str, ds, invoices) -> pd.DataFrame:
-    """Return the raw DataFrame (normalized Postgres table) to export for a section."""
+def _clean_invoices(invoices) -> pd.DataFrame:
+    """Clean invoice rows: displayed columns + a Status column (no booleans/JSON)."""
+    if invoices is None or invoices.empty:
+        return pd.DataFrame()
+    out = invoices.copy()
+    overdue = out["Overdue"].fillna(False).astype(bool) if "Overdue" in out.columns else pd.Series(False, index=out.index)
+    balance = out["Balance"].fillna(0) if "Balance" in out.columns else pd.Series(0, index=out.index)
+    cols = ["DocNumber", "TxnDate", "DueDate", "CustomerName", "City", "State", "Revenue", "RevenueBalance"]
+    keep = [c for c in cols if c in out.columns]
+    out = out[keep].copy()
+    for c in ("TxnDate", "DueDate"):
+        if c in out.columns:
+            out[c] = pd.to_datetime(out[c], errors="coerce").dt.date
+    out["Status"] = "Open"
+    out.loc[balance <= 0, "Status"] = "Paid"
+    out.loc[overdue, "Status"] = "Overdue"
+    return out
+
+
+def _clean_customers(ds, invoices) -> pd.DataFrame:
+    if ds is None or ds.customers.empty:
+        return pd.DataFrame()
+    billed = invoices.groupby("CustomerId")["Revenue"].sum().rename("Billed")
+    c = ds.customers.merge(billed, left_on="Id", right_index=True, how="left")
+    c["Billed"] = c["Billed"].fillna(0.0)
+    c = c.sort_values("Billed", ascending=False)
+    keep = [col for col in ["CustomerName", "City", "State", "Billed", "Balance"] if col in c.columns]
+    return c[keep].copy()
+
+
+def _clean_accounts(ds) -> pd.DataFrame:
+    if ds is None or ds.accounts.empty:
+        return pd.DataFrame()
+    a = QB.balance_sheet_accounts(ds.accounts)
+    keep = [col for col in ["FullyQualifiedName", "Classification", "AccountType", "CurrentBalance"] if col in a.columns]
+    return a[keep].copy()
+
+
+def _clean_pnl(ds, basis, start, end) -> pd.DataFrame:
+    s = QB.pnl_summary(ds.pnl, basis, start, end)
+    if not s or s.get("income", 0) == 0:
+        return pd.DataFrame()
+    lines = [
+        ("Income", s.get("income", 0)),
+        ("COGS", s.get("cogs", 0)),
+        ("Gross Profit", s.get("income", 0) - s.get("cogs", 0)),
+        ("Operating Expenses", s.get("expenses", 0)),
+        ("Net Operating Income", s.get("income", 0) - s.get("cogs", 0) - s.get("expenses", 0)),
+        ("Other Income", s.get("other_income", 0)),
+        ("Other Expenses", s.get("other_expenses", 0)),
+        ("Net Income", s.get("net_income", 0)),
+    ]
+    return pd.DataFrame(lines, columns=["Line Item", "Amount"])
+
+
+def _export_dataframe(section: str, ds, invoices, basis="accrual", start=None, end=None) -> pd.DataFrame:
+    """Return the CLEAN data that the section actually displays (not the raw API dump)."""
     if section == "customers":
-        df = ds.customers.copy()
-        if not invoices.empty:
-            billed = invoices.groupby("CustomerId")["Revenue"].sum().rename("Billed")
-            df = df.merge(billed, left_on="Id", right_index=True, how="left")
-            df["Billed"] = df["Billed"].fillna(0.0)
-        return df
-    if section == "accounts":
-        return ds.accounts
-    # overview / sales / finance / profitability -> invoices
-    return invoices
+        return _clean_customers(ds, invoices)
+    if section in ("accounts", "finance"):
+        return _clean_accounts(ds)
+    if section == "profitability":
+        return _clean_pnl(ds, basis, start, end)
+    return _clean_invoices(invoices)  # overview, sales
 
 
 @router.get("/_api/qb/{section}")
@@ -369,7 +420,7 @@ def qb_section(
 
     if format == "csv":
         return to_csv_response(
-            _export_dataframe(section, ds, invoices),
+            _export_dataframe(section, ds, invoices, basis, start, end),
             filename=f"quickbooks_{section}_{range}.csv",
         )
 

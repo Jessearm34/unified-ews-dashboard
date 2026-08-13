@@ -32,8 +32,19 @@ def _kpi(label: str, value, hint=None, help=None):
 async def insperity_workers(format: str = Query("")):
     ds = INS.load_dataset()
     if format == "csv":
-        df = ds.workers if (ds is not None and not ds.workers.empty) else pd.DataFrame()
-        return to_csv_response(df, filename="insperity_workers.csv")
+        if ds is None or ds.workers.empty:
+            return to_csv_response(pd.DataFrame(), filename="insperity_workers.csv")
+        w = ds.workers.copy()
+        cols = ["first_name", "last_name", "classification", "department_name", "job_title", "region"]
+        out = w[[c for c in cols if c in w.columns]].copy()
+        if "first_name" in out.columns and "last_name" in out.columns:
+            out["name"] = (out["first_name"].fillna("").astype(str) + " " + out["last_name"].fillna("").astype(str)).str.strip()
+            out = out.drop(columns=["first_name", "last_name"])
+        if "classification" in out.columns:
+            out["classification"] = out["classification"].map(
+                {"direct": "Direct (Field)", "indirect": "Indirect (Shop)"}
+            ).fillna(out["classification"])
+        return to_csv_response(out, filename="insperity_workers.csv")
     if ds is None or ds.workers.empty:
         return {"kpis": [_kpi("No Data", "—")], "charts": {}}
 

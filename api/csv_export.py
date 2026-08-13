@@ -1,22 +1,24 @@
 """CSV export utility — attach ``?format=csv`` to any /_api route to download data.
 
 Usage in a route handler:
-    return _csv(df, filename="report.csv")
+    return to_csv_response(df, filename="report.csv")
 """
 
 from __future__ import annotations
 
 import io
 import pandas as pd
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 
 
 def to_csv_response(df: pd.DataFrame, filename: str = "export.csv") -> StreamingResponse:
-    """Return a streaming CSV download from a DataFrame."""
-    if df.empty:
-        return JSONResponse(
-            {"error": "No data", "rows": 0}, status_code=200
-        )
+    """Return a streaming CSV download from a DataFrame.
+
+    Always returns a CSV file (empty DataFrame -> header-only or blank file),
+    never a JSON payload.
+    """
+    if df is None:
+        df = pd.DataFrame()
     output = io.StringIO()
     df.to_csv(output, index=False)
     output.seek(0)

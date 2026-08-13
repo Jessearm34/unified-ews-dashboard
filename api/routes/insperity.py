@@ -17,6 +17,7 @@ except Exception:
     _HOUSTON = timezone.utc
 
 from data import insperity as INS
+from api.csv_export import to_csv_response
 
 router = APIRouter(prefix="/_api", tags=["insperity"])
 
@@ -27,8 +28,12 @@ def _kpi(label: str, value, hint=None, help=None):
 
 
 @router.get("/insperity/workers")
-async def insperity_workers():
+@router.get("/in/workers")
+async def insperity_workers(format: str = Query("")):
     ds = INS.load_dataset()
+    if format == "csv":
+        df = ds.workers if (ds is not None and not ds.workers.empty) else pd.DataFrame()
+        return to_csv_response(df, filename="insperity_workers.csv")
     if ds is None or ds.workers.empty:
         return {"kpis": [_kpi("No Data", "—")], "charts": {}}
 

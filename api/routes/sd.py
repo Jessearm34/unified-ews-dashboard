@@ -8,6 +8,7 @@ import pandas as pd
 from fastapi import APIRouter, Query
 
 from api.cache import cached
+from api.csv_export import to_csv_response
 from data import sd_data as SD
 from charts import sd_charts as SDC
 
@@ -45,12 +46,30 @@ def _rag(v, g, a, gh=True):
     return "red"
 
 
+def _export_dataframe(section: str, ds) -> pd.DataFrame:
+    """Return the raw normalized table to export for a section."""
+    if section == "workers":
+        return ds.workers
+    if section == "compliance":
+        return ds.schedules
+    return ds.forms  # hse, forms
+
+
 @router.get("/_api/sd/{section}")
 async def sd_section(section: str = "hse",
-                     compare: bool = Query(False)):
+                     compare: bool = Query(False),
+                     format: str = Query("")):
     ds = cached("sd", _load_sd)
     if not ds:
+        if format == "csv":
+            return to_csv_response(pd.DataFrame(), filename="sitedocs_empty.csv")
         return {"kpis": [], "charts": {}, "loaded_at": datetime.now(_HOUSTON).isoformat()}
+
+    if format == "csv":
+        return to_csv_response(
+            _export_dataframe(section, ds),
+            filename=f"sitedocs_{section}.csv",
+        )
 
     now_iso = datetime.now(_HOUSTON).isoformat()
     compare_forms = None

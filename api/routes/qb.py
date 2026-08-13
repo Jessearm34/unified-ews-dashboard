@@ -18,6 +18,7 @@ except Exception:
 
 from api.cache import cached
 from api.utils import resolve_date_range
+from api.csv_export import to_csv_response
 from data import qb_data as QB
 from charts import qb_charts as QBC
 
@@ -331,20 +332,47 @@ _SECTION_HANDLERS = {
 }
 
 
+# ── CSV export — raw normalized table for the current section ──────
+
+def _export_dataframe(section: str, ds, invoices) -> pd.DataFrame:
+    """Return the raw DataFrame (normalized Postgres table) to export for a section."""
+    if section == "customers":
+        df = ds.customers.copy()
+        if not invoices.empty:
+            billed = invoices.groupby("CustomerId")["Revenue"].sum().rename("Billed")
+            df = df.merge(billed, left_on="Id", right_index=True, how="left")
+            df["Billed"] = df["Billed"].fillna(0.0)
+        return df
+    if section == "accounts":
+        return ds.accounts
+    # overview / sales / finance / profitability -> invoices
+    return invoices
+
+
 @router.get("/_api/qb/{section}")
 def qb_section(
     section: str,
     basis: str = Query("accrual"),
     range: str = Query("all"),
     metric: str = Query("revenue"),
+    format: str = Query(""),
 ):
     now_iso = datetime.now(_HOUSTON).isoformat()
     ds = cached("qb", QB.qb_load_dataset)
     if not ds:
+        if format == "csv":
+            return to_csv_response(pd.DataFrame(), filename="quickbooks_empty.csv")
         return {"kpis": [], "charts": {}, "loaded_at": now_iso, "section": section, "error": "No QuickBooks data"}
 
     start, end = resolve_date_range(range)
     invoices = QB.filter_invoices(ds.invoices, start, end)
+
+    if format == "csv":
+        return to_csv_response(
+            _export_dataframe(section, ds, invoices),
+            filename=f"quickbooks_{section}_{range}.csv",
+        )
+
     handler = _SECTION_HANDLERS.get(section)
     if handler is None:
         return {"kpis": [], "charts": {}, "loaded_at": now_iso, "error": f"Unknown section: {section}"}

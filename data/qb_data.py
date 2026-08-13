@@ -813,42 +813,6 @@ def pnl_kpis(ds: "QbDataset", basis: str, start: date, end: date) -> dict[str, K
     }
 
 
-# ── DSO Trend ──────────────────────────────────────────────────────
-
-
-def dso_trend_series(invoices: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
-    """Monthly DSO values and prior-year DSO values for the window."""
-    cols = ["Month", "DSO", "DSO_PY"]
-    if invoices.empty:
-        return pd.DataFrame(columns=cols)
-    inv = invoices.copy()
-    inv["TxnDate_dt"] = inv["TxnDate"].dt.date
-    months = pd.date_range(start=start, end=end, freq="MS")
-    rows = []
-    for m in months:
-        m_start = m.date()
-        m_end = (m + pd.offsets.MonthEnd(0)).date()
-        mask = (inv["TxnDate_dt"] >= m_start) & (inv["TxnDate_dt"] <= m_end)
-        cur = inv[mask]
-        revenue = cur["Revenue"].sum()
-        if revenue <= 0:
-            continue
-        ar = cur.loc[cur["RevenueBalance"] > 0, "RevenueBalance"].sum()
-        days_in = (m_end - m_start).days + 1
-        dso_val = (ar / revenue) * days_in if days_in else None
-        py_start = (m_start - pd.DateOffset(years=1)).date()
-        py_end = (m_end - pd.DateOffset(years=1)).date()
-        py_mask = (inv["TxnDate_dt"] >= py_start) & (inv["TxnDate_dt"] <= py_end)
-        py = inv[py_mask]
-        py_revenue = py["Revenue"].sum()
-        py_dso_val = None
-        if py_revenue > 0:
-            py_ar = py.loc[py["RevenueBalance"] > 0, "RevenueBalance"].sum()
-            py_dso_val = (py_ar / py_revenue) * days_in if days_in else None
-        rows.append({"Month": m, "DSO": dso_val, "DSO_PY": py_dso_val})
-    return pd.DataFrame(rows)
-
-
 def customer_monthly_revenue(invoices: pd.DataFrame, start: date, end: date, top_n: int = 6) -> pd.DataFrame:
     """Monthly revenue broken out by top N customers + Other."""
     inv = invoices.copy()

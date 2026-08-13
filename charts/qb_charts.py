@@ -453,37 +453,6 @@ def accounts_by_type(accounts: pd.DataFrame) -> str:
     return render(_layout(fig, max(260, 30 * len(g))))
 
 
-# ── DSO Trend ─────────────────────────────────────────────────────
-
-
-def dso_trend(invoices: pd.DataFrame, start, end) -> str:
-    """Monthly DSO line chart with prior-year comparison overlay."""
-    df = D.dso_trend_series(invoices, start, end)
-    if df.empty:
-        return empty("No DSO data for this range")
-    fig = go.Figure()
-    fig.add_scatter(
-        x=df["Month"], y=df["DSO"], mode="lines+markers",
-        line=dict(color=ACCENT, width=3), marker=dict(size=7, color=ACCENT),
-        name="DSO",
-        hovertemplate="%{x|%b %Y}<br>DSO: %{y:.1f} days<extra></extra>",
-    )
-    py = df[df["DSO_PY"].notna()]
-    if not py.empty:
-        fig.add_scatter(
-            x=py["Month"], y=py["DSO_PY"], mode="lines+markers",
-            line=dict(color=_rgba(ACCENT, 0.4), width=2, dash="dot"),
-            marker=dict(size=6, color=_rgba(ACCENT, 0.4)),
-            name="DSO (prior year)",
-            hovertemplate="%{x|%b %Y}<br>DSO: %{y:.1f} days<extra></extra>",
-        )
-    fig.update_layout(showlegend=True, legend=dict(orientation="h", y=1.12, x=0))
-    fig.update_yaxes(title="Days", gridcolor="rgba(55,59,68,0.45)")
-    dtick, tickangle = _date_ticks(len(df))
-    fig.update_xaxes(title=None, gridcolor="rgba(55,59,68,0.35)", dtick=dtick, tickformat="%b %Y", tickangle=tickangle)
-    return render(_layout(fig, 320))
-
-
 def revenue_by_customer_monthly(invoices: pd.DataFrame, start, end) -> str:
     """Monthly revenue by top 3 customers + Other (thin focused trend)."""
     df = D.customer_monthly_revenue(invoices, start, end, top_n=3)

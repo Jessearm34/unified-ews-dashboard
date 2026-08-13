@@ -243,9 +243,6 @@ def _section_finance(ds, invoices, start, end, basis, metric):
         charts["balance-status"] = {"html": QBC.balance_status(invoices),
                                     "title": "Invoice Balance Status",
                                     "help": "Paid, open, and overdue invoice balances"}
-        charts["dso-trend"] = {"html": QBC.dso_trend(invoices, start, end),
-                               "title": "Monthly DSO Trend",
-                               "help": "Days Sales Outstanding per month — lower is better"}
 
     return kpis, charts
 

@@ -292,20 +292,9 @@ def overview(range: str = Query("ytd", description="Date range key"),
     except Exception:
         pass
 
-    # Compute health summary from KPI RAG values
-    green = sum(1 for k in kpis if k.get("rag") == "green")
-    amber = sum(1 for k in kpis if k.get("rag") == "amber")
-    red = sum(1 for k in kpis if k.get("rag") == "red")
-    total_rag = green + amber + red
-    health = {
-        "green": green, "amber": amber, "red": red,
-        "score": round(green / total_rag * 100) if total_rag > 0 else 100,
-    } if total_rag > 0 else {"green": 0, "amber": 0, "red": 0, "score": 100}
-
     return {
         "kpis": kpis,
         "charts": charts,
-        "health": health,
         "loaded_at": datetime.now(_HOUSTON).isoformat(),
         "range_info": f"{range.upper()} · {start.strftime('%b %d')} – {end.strftime('%b %d, %Y')}",
         "has_more": {

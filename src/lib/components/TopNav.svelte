@@ -30,11 +30,6 @@
 		{/each}
 	</nav>
 				<div class="right">
-					{#if currentPlatform && currentPlatform !== 'overview'}
-						<a class="tn-link" href="/_api/{currentPlatform}/{currentSection}?format=csv" target="_blank" title="Download CSV">⭳ CSV</a>
-					{:else}
-						<a class="tn-link" href="/_api/overview?format=csv" target="_blank" title="Download CSV">⭳ CSV</a>
-					{/if}
 					<span class="dot"></span> Live
 				</div>
 </header>

@@ -12,7 +12,6 @@ from fastapi import APIRouter, Query
 
 from api.cache import cached
 from api.utils import resolve_date_range, _rgba, empty as _empty_html
-from api.csv_export import to_csv_response
 from data import gt_data as GT
 
 # Houston timezone
@@ -73,34 +72,8 @@ def _load_gt():
     return None
 
 
-# ── CSV export — raw GeoTab table for the current section ──────
-
-_GT_TABLES = {"vehicles", "trips", "drivers", "gps_logs", "fault_codes", "fuel_events"}
-
-
-def _export_dataframe(section: str) -> pd.DataFrame:
-    """Read the raw GeoTab table for a section and return it as a DataFrame."""
-    table = "trips" if section == "fleet" else "fault_codes" if section == "maintenance" else "trips"
-    if table not in _GT_TABLES:
-        return pd.DataFrame()
-    eng = GT.gt_engine()
-    if eng is None:
-        return pd.DataFrame()
-    try:
-        with eng.connect() as conn:
-            return pd.read_sql(f"SELECT * FROM {table}", conn)
-    except Exception:
-        return pd.DataFrame()
-
-
 @router.get("/_api/gt/{section}")
-async def gt_section(section: str = "fleet", range: str = Query(default="all"),
-                     format: str = Query("")):
-    if format == "csv":
-        return to_csv_response(
-            _export_dataframe(section),
-            filename=f"geotab_{section}.csv",
-        )
+async def gt_section(section: str = "fleet", range: str = Query(default="all")):
     try:
         return _gt_section_impl(section, range_key=range)
     except Exception as e:

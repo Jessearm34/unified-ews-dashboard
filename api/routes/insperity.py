@@ -17,7 +17,6 @@ except Exception:
     _HOUSTON = timezone.utc
 
 from data import insperity as INS
-from api.csv_export import to_csv_response
 
 router = APIRouter(prefix="/_api", tags=["insperity"])
 
@@ -28,23 +27,8 @@ def _kpi(label: str, value, hint=None, help=None):
 
 
 @router.get("/insperity/workers")
-@router.get("/in/workers")
-async def insperity_workers(format: str = Query("")):
+async def insperity_workers():
     ds = INS.load_dataset()
-    if format == "csv":
-        if ds is None or ds.workers.empty:
-            return to_csv_response(pd.DataFrame(), filename="insperity_workers.csv")
-        w = ds.workers.copy()
-        cols = ["first_name", "last_name", "classification", "department_name", "job_title", "region"]
-        out = w[[c for c in cols if c in w.columns]].copy()
-        if "first_name" in out.columns and "last_name" in out.columns:
-            out["name"] = (out["first_name"].fillna("").astype(str) + " " + out["last_name"].fillna("").astype(str)).str.strip()
-            out = out.drop(columns=["first_name", "last_name"])
-        if "classification" in out.columns:
-            out["classification"] = out["classification"].map(
-                {"direct": "Direct (Field)", "indirect": "Indirect (Shop)"}
-            ).fillna(out["classification"])
-        return to_csv_response(out, filename="insperity_workers.csv")
     if ds is None or ds.workers.empty:
         return {"kpis": [_kpi("No Data", "—")], "charts": {}}
 

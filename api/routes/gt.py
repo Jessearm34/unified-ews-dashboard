@@ -34,11 +34,15 @@ def _fig_html(fig, height=350):
         height=height,
         margin=dict(l=10, r=10, t=5, b=10),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="'Inter', system-ui, -apple-system, sans-serif", size=11),
-        yaxis=dict(gridcolor="#e2e8f0", zeroline=False, tickfont=dict(size=10)),
-        xaxis=dict(gridcolor="#f1f5f9", zeroline=False, tickfont=dict(size=10)),
+        font=dict(family="'Inter', system-ui, -apple-system, sans-serif", size=12, color="#c9d1d9"),
         showlegend=fig.layout.showlegend,
+        hoverlabel=dict(bgcolor="#161b22", font_size=12, font_family="'Inter', system-ui, sans-serif",
+                        font_color="#e6edf3", bordercolor="#30363d"),
     )
+    fig.update_xaxes(gridcolor="rgba(139,148,158,0.25)", zeroline=False,
+                     tickfont=dict(size=11, color="#c9d1d9"))
+    fig.update_yaxes(gridcolor="rgba(139,148,158,0.25)", zeroline=False,
+                     tickfont=dict(size=11, color="#c9d1d9"))
     return fig.to_html(include_plotlyjs=False, full_html=False, config=_PLOT_CONFIG)
 
 

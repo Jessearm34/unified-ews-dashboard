@@ -1,5 +1,5 @@
 <script>
-	let { presets = [], current = 'ytd', onChange } = $props();
+	let { presets = [], range = 'ytd', onChange } = $props();
 </script>
 
 <div class="controls">
@@ -7,7 +7,7 @@
 	{#each presets as [key, label] (key)}
 		<button
 			class="preset"
-			class:active={current === key}
+			class:active={range === key}
 			onclick={() => onChange?.(key)}
 		>{label}</button>
 	{/each}

@@ -22,7 +22,7 @@
 	const qbRangePresets = [...rangePresets];
 	const qbBasisOptions = [['accrual','Accrual'],['cash','Cash']];
 
-	let range = $state('all');
+	let range = $state('ytd');
 	let basis = $state('accrual');
 	let compare = $state(false);
 	let pageTitle = $state('');

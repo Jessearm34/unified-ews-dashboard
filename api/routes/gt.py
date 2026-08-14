@@ -134,9 +134,6 @@ def _gt_section_impl(section: str, range_key: str):
                 x=df["d"], y=df["mileage"].rolling(7, min_periods=1).mean(),
                 mode="lines", line=dict(color=I, width=2.5, shape="spline"),
                 name="7-day avg", hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
-            f.add_trace(go.Bar(
-                x=df["d"], y=df["mileage"], marker=dict(color=_rgba(I, 0.25)),
-                name="Daily", hovertemplate="%{x|%b %d}<br>%{y:,.0f} mi<extra></extra>"))
             f.update_layout(showlegend=True, legend=dict(orientation="h", y=1.1, font=dict(size=9)))
             charts["mileage_trend"] = {"html": _fig_html(f), "title": "Daily Mileage Trend"}
         else:
@@ -145,11 +142,10 @@ def _gt_section_impl(section: str, range_key: str):
         # Vehicle Utilization
         top = [u for u in ut if u["total_miles"] > 0] if ut else []
         if len(top) >= 2:
-            colors = [_rgba(I, max(0.3, 1 - (i/len(top))*0.7)) for i in range(len(top))]
             labs = [u.get("assigned_driver", "") or u["label"] for u in top]
             f = go.Figure(go.Bar(
                 x=[u["total_miles"] for u in top], y=labs,
-                orientation="h", marker=dict(color=colors),
+                orientation="h", marker=dict(color=I),
                 hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
             f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Miles Driven"))
             charts["utilization"] = {"html": _fig_html(f, 350), "title": "Vehicle Utilization"}
@@ -172,11 +168,10 @@ def _gt_section_impl(section: str, range_key: str):
         iv = il.get("vehicles", []) if il else []
         av = [v for v in iv if v["idle_pct"] > 1] if iv else []
         if len(av) >= 2:
-            colors = [_rgba("#ea580c", max(0.3, 1 - (i/len(av))*0.6)) for i in range(len(av))]
             labs = [v.get("assigned_driver", "") or v["label"] for v in av]
             f = go.Figure(go.Bar(
                 x=[v["idle_pct"] for v in av], y=labs,
-                orientation="h", marker=dict(color=colors),
+                orientation="h", marker=dict(color="#ea580c"),
                 hovertemplate="%{y}<br>%{x:.1f}%<extra></extra>"))
             f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Idle %"))
             charts["idle_time"] = {"html": _fig_html(f, 250), "title": "Idle Time by Vehicle"}
@@ -257,20 +252,18 @@ def _gt_section_impl(section: str, range_key: str):
 
         active_mt = [v for v in mt if v.get("odo_mi", 0) > 0]
         if len(active_mt) >= 2:
-            colors = [_rgba(I, max(0.3, 1 - (i/len(active_mt))*0.7)) for i in range(len(active_mt))]
             f = go.Figure(go.Bar(
                 x=[v["odo_mi"] for v in active_mt], y=[v["label"] for v in active_mt],
-                orientation="h", marker=dict(color=colors),
+                orientation="h", marker=dict(color=I),
                 hovertemplate="%{y}<br>%{x:,.0f} mi<extra></extra>"))
             f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Odometer (mi)"))
             charts["odometer"] = {"html": _fig_html(f, 300), "title": "Vehicle Odometer"}
 
         freq = fl.get("fault_frequency", []) if fl else []
         if len(freq) >= 2:
-            colors = [_rgba("#dc2626", max(0.3, 1 - (i/len(freq))*0.6)) for i in range(len(freq))]
             f = go.Figure(go.Bar(
                 x=[f["count"] for f in freq], y=[f["fault_code"] for f in freq],
-                orientation="h", marker=dict(color=colors),
+                orientation="h", marker=dict(color="#dc2626"),
                 hovertemplate="%{y}<br>%{x} occurrences<extra></extra>"))
             f.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Occurrences"))
             charts["faults"] = {"html": _fig_html(f, 300), "title": "Fault Frequency"}

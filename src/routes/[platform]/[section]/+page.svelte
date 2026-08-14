@@ -127,7 +127,7 @@
 	<RangeControl presets={rangePresets} {range} onChange={onRangeChange} />
 {/if}
 
-{#if currentPlatform === 'sd' || currentPlatform === 'qb'}
+{#if currentPlatform === 'qb'}
 	<div class="controls" style="margin-top:0">
 		<button class="preset" class:active={compare} onclick={toggleCompare}>
 			{compare ? '◉' : '○'} Compare

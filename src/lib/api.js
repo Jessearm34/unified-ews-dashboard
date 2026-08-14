@@ -33,6 +33,7 @@ export function fetchQB(section, opts = {}) {
 	if (opts.basis) params.set('basis', opts.basis);
 	if (opts.range) params.set('range', opts.range);
 	if (opts.metric) params.set('metric', opts.metric);
+	if (opts.compare) params.set('compare', 'true');
 	const qs = params.toString();
 	return request(`/_api/qb/${section}${qs ? '?' + qs : ''}`);
 }

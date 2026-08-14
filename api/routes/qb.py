@@ -163,7 +163,7 @@ def _pnl_statement(summary):
 
 # ── Section handlers — matches eww-dashboard-public section structure ─
 
-def _section_overview(ds, invoices, start, end, basis, metric):
+def _section_overview(ds, invoices, start, end, basis, metric, compare_invoices=None):
     kpis_all = QB.compute_kpis(ds, invoices, start, end)
     kpis = []
     for k in _KPI_SETS["overview"]:
@@ -173,7 +173,7 @@ def _section_overview(ds, invoices, start, end, basis, metric):
 
     charts = {}
     if not invoices.empty:
-        charts["revenue-trend"] = {"html": QBC.trend(invoices, metric),
+        charts["revenue-trend"] = {"html": QBC.trend(invoices, metric, compare_invoices),
                                    "title": "Monthly Revenue Trend",
                                    "help": "Monthly revenue with completed months (filled) and current month (open circle)"}
         charts["top-customers"] = {"html": QBC.top_customers(invoices),
@@ -194,7 +194,7 @@ def _section_overview(ds, invoices, start, end, basis, metric):
     return kpis, charts
 
 
-def _section_sales(ds, invoices, start, end, basis, metric):
+def _section_sales(ds, invoices, start, end, basis, metric, compare_invoices=None):
     kpis_all = QB.compute_kpis(ds, invoices, start, end)
     kpis = []
     for k in _KPI_SETS["sales"]:
@@ -204,7 +204,7 @@ def _section_sales(ds, invoices, start, end, basis, metric):
 
     charts = {}
     if not invoices.empty:
-        charts["revenue-trend"] = {"html": QBC.trend(invoices, metric),
+        charts["revenue-trend"] = {"html": QBC.trend(invoices, metric, compare_invoices),
                                    "title": "Monthly Revenue",
                                    "help": "Monthly billed revenue trend"}
         charts["revenue-by-item"] = {"html": QBC.revenue_by_item(invoices),
@@ -220,7 +220,7 @@ def _section_sales(ds, invoices, start, end, basis, metric):
     return kpis, charts
 
 
-def _section_finance(ds, invoices, start, end, basis, metric):
+def _section_finance(ds, invoices, start, end, basis, metric, compare_invoices=None):
     kpis_all = QB.compute_kpis(ds, invoices, start, end)
     kpis = []
     for k in _KPI_SETS["finance"]:
@@ -247,7 +247,7 @@ def _section_finance(ds, invoices, start, end, basis, metric):
     return kpis, charts
 
 
-def _section_profitability(ds, invoices, start, end, basis, metric):
+def _section_profitability(ds, invoices, start, end, basis, metric, compare_invoices=None):
     pnl_sum = QB.pnl_summary(ds.pnl, basis, start, end)
     kpis_all = QB.pnl_kpis(ds, basis, start, end)
     kpis = []
@@ -276,7 +276,7 @@ def _section_profitability(ds, invoices, start, end, basis, metric):
     return kpis, charts
 
 
-def _section_customers(ds, invoices, start, end, basis, metric):
+def _section_customers(ds, invoices, start, end, basis, metric, compare_invoices=None):
     kpis_all = QB.compute_kpis(ds, invoices, start, end)
     kpis = []
     for k in _KPI_SETS["customers"]:
@@ -299,7 +299,7 @@ def _section_customers(ds, invoices, start, end, basis, metric):
     return kpis, charts
 
 
-def _section_accounts(ds, invoices, start, end, basis, metric):
+def _section_accounts(ds, invoices, start, end, basis, metric, compare_invoices=None):
     kpis_all = QB.compute_kpis(ds, invoices, start, end)
     kpis = []
     for k in _KPI_SETS["accounts"]:
@@ -328,12 +328,21 @@ _SECTION_HANDLERS = {
 }
 
 
+def _year_ago(d):
+    """Same calendar date one year earlier (handles Feb 29)."""
+    try:
+        return d.replace(year=d.year - 1)
+    except ValueError:
+        return d.replace(year=d.year - 1, day=28)
+
+
 @router.get("/_api/qb/{section}")
 def qb_section(
     section: str,
     basis: str = Query("accrual"),
     range: str = Query("all"),
     metric: str = Query("revenue"),
+    compare: bool = Query(False),
 ):
     now_iso = datetime.now(_HOUSTON).isoformat()
     ds = cached("qb", QB.qb_load_dataset)
@@ -343,11 +352,15 @@ def qb_section(
     start, end = resolve_date_range(range)
     invoices = QB.filter_invoices(ds.invoices, start, end)
 
+    compare_invoices = None
+    if compare:
+        compare_invoices = QB.filter_invoices(ds.invoices, _year_ago(start), _year_ago(end))
+
     handler = _SECTION_HANDLERS.get(section)
     if handler is None:
         return {"kpis": [], "charts": {}, "loaded_at": now_iso, "error": f"Unknown section: {section}"}
 
-    kpis, charts = handler(ds, invoices, start, end, basis, metric)
+    kpis, charts = handler(ds, invoices, start, end, basis, metric, compare_invoices)
 
     # Filter out zero/null-data KPIs and charts
     kpis = [k for k in kpis if str(k.get("value", "")).strip() not in ("$0", "0", "0d", "—", "0.0%", "$0.00", "") and k.get("value") != 0 and k.get("value") != 0.0]

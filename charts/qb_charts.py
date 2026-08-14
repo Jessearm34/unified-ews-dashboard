@@ -146,13 +146,15 @@ def trend(invoices: pd.DataFrame, metric: str, compare_invoices: pd.DataFrame | 
     if compare_invoices is not None and not compare_invoices.empty:
         cdf = D.trend_series(compare_invoices, metric)
         if not cdf.empty and len(cdf) > 0:
+            cdf = cdf.copy()
+            cdf["Month"] = cdf["Month"] + pd.DateOffset(years=1)  # align to current year
             fig.add_trace(go.Scatter(
                 x=cdf["Month"], y=cdf["value"],
                 mode="lines+markers",
                 line=dict(color="#6e7681", width=2, dash="dash"),
                 marker=dict(size=5, color="#6e7681"),
                 name="Prev period",
-                hovertemplate=f"%{{x|%b %Y}}<br>{hover_fmt}<extra></extra>",
+                hovertemplate=f"%{{x|%b}} Prev period<br>{hover_fmt}<extra></extra>",
             ))
     fig.update_layout(showlegend=compare_invoices is not None and not compare_invoices.empty,
                       legend=dict(orientation="h", y=1.1, font=dict(size=9)))
@@ -354,7 +356,7 @@ def revenue_by_class(invoices: pd.DataFrame) -> str:
             values=g["Amount"],
             hole=0.55,
             marker=dict(colors=SEQ, line=dict(color="rgba(55,59,68,0.6)", width=1)),
-            textinfo="label+percent",
+            textinfo="none",
             hovertemplate="%{label}<br>$%{value:,.2f} (%{percent})<extra></extra>",
         )
     )

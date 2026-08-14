@@ -62,18 +62,17 @@ def overlay_compare(fig: go.Figure, compare_df: pd.DataFrame,
     """Add a dashed line trace to a monthly trend figure from a comparison DataFrame.
 
     ``compare_df`` must have columns ``Month`` (datetime) and ``Count`` (int).
-    Shifts the compare data to align months regardless of year.
+    Uses month labels ("Jan") so the overlay aligns with the categorical bar axis
+    and never shows a full date/time.
     """
     if compare_df.empty or "Month" not in compare_df.columns:
         return fig
     cdf = compare_df.copy()
     cdf["Month"] = pd.to_datetime(cdf["Month"])
-    cdf["Month"] = cdf["Month"].apply(
-        lambda d: d.replace(year=2026)  # align to current year for overlay
-    )
-    ht = hovertemplate or f"%{{x|%b}} {name}<br>%{{y}}<extra></extra>"
+    cdf["Label"] = cdf["Month"].dt.strftime("%b")
+    ht = hovertemplate or f"%{{x}} {name}<br>%{{y}}<extra></extra>"
     fig.add_trace(go.Scatter(
-        x=cdf["Month"], y=cdf["Count"],
+        x=cdf["Label"], y=cdf["Count"],
         mode="lines+markers",
         line=dict(color=color, width=2, dash="dash"),
         marker=dict(size=5, color=color),
@@ -260,7 +259,7 @@ def forms_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) 
     fig.update_xaxes(gridcolor="rgba(55,59,68,0.35)", tickfont=dict(size=11))
     if cdf is not None and not cdf.empty:
         fig = overlay_compare(fig, cdf, color=ACCENT, name="Last year",
-                              hovertemplate="%{x|%b} Last year<br>%{y} forms<extra></extra>")
+                              hovertemplate="%{x} Last year<br>%{y} forms<extra></extra>")
     html = render(_layout(fig, 300))
     div_id = html.split('id="')[1].split('"')[0] if 'id="' in html else "plot-0"
     click_js = '<script>'
@@ -463,7 +462,7 @@ def bbso_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) -
     fig.update_xaxes(gridcolor="rgba(55,59,68,0.35)", tickfont=dict(size=11))
     if cdf is not None and not cdf.empty:
         fig = overlay_compare(fig, cdf, color="#7c5cbf", name="Last year",
-                              hovertemplate="%{x|%b} Last year<br>%{y} BBSOs<extra></extra>")
+                              hovertemplate="%{x} Last year<br>%{y} BBSOs<extra></extra>")
     return render(_layout(fig, 260))
 
 
@@ -489,7 +488,7 @@ def rir_trend(forms: pd.DataFrame, compare_forms: pd.DataFrame | None = None) ->
     fig.update_xaxes(gridcolor="rgba(55,59,68,0.35)", tickfont=dict(size=11))
     if cdf is not None and not cdf.empty:
         fig = overlay_compare(fig, cdf, color="#daaa3f", name="Last year",
-                              hovertemplate="%{x|%b} Last year<br>%{y} RIRs<extra></extra>")
+                              hovertemplate="%{x} Last year<br>%{y} RIRs<extra></extra>")
     return render(_layout(fig, 260))
 
 

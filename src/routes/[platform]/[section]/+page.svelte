@@ -46,7 +46,7 @@
 		try {
 			let result;
 			if (plat === 'qb') {
-				result = await fetchQB(sec, { basis, range });
+				result = await fetchQB(sec, { basis, range, compare });
 			} else if (plat === 'sd') {
 				result = await fetchSD(sec, compare);
 						} else if (plat === 'gt') {
@@ -127,7 +127,7 @@
 	<RangeControl presets={rangePresets} {range} onChange={onRangeChange} />
 {/if}
 
-{#if currentPlatform === 'sd'}
+{#if currentPlatform === 'sd' || currentPlatform === 'qb'}
 	<div class="controls" style="margin-top:0">
 		<button class="preset" class:active={compare} onclick={toggleCompare}>
 			{compare ? '◉' : '○'} Compare
